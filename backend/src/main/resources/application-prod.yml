@@ -1,0 +1,13 @@
+logging:
+  level:
+    com.sentinel: INFO
+
+spring:
+  datasource:
+    # Fail-fast no perfil prod: sem fallback fraco (o default "sentinel" do
+    # application.yml base continua valendo apenas para dev local).
+    password: ${DATABASE_PASSWORD:?DATABASE_PASSWORD é obrigatória no perfil prod}
+  jpa:
+    show-sql: false
+  flyway:
+    validate-on-migrate: true
