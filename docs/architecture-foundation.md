@@ -1,6 +1,6 @@
 # Fundação da arquitetura — Sentinel
 
-> Prompt 01 de 18. Este documento descreve **decisões e fronteiras planejadas**; apenas o que estiver indicado como "construído" existe hoje no código.
+> Prompt 01 de 18 (atualizado no **Prompt 02 — Identity**). Este documento descreve **decisões e fronteiras planejadas**; apenas o que estiver indicado como "construído" existe hoje no código.
 
 ## 1. Decisões arquiteturais
 
@@ -17,7 +17,7 @@
 
 As fronteiras abaixo **não existem como código nem como pastas vazias** — são apenas o mapa previsto:
 
-- **identity** — autenticação e autorização: usuários, credenciais, sessões/tokens, papéis e permissões (RBAC).
+- **identity** — ⚠️ **parcialmente construída no Prompt 02**: usuários, credenciais (BCrypt) e sessão HTTP transitória (`register`/`login`/`me`). Ainda **faltam**: papéis, permissões (RBAC) e sessões/tokens persistentes (JWT/refresh).
 - **organizations** — tenants da plataforma: organizações, membros, papéis por organização e troca de contexto de tenant.
 - **projects** — agrupamento lógico dentro de uma organização: projetos, ambientes e vinculação de serviços.
 - **services** — catálogo dos serviços monitorados: cadastro, metadados, tags e associação a projetos.
@@ -30,7 +30,7 @@ As fronteiras abaixo **não existem como código nem como pastas vazias** — s�
 
 ```mermaid
 graph LR
-    FE[Frontend Next.js :3000] -->|HTTP :8080| BE[Backend Spring Boot :8080]
+    FE[Frontend Next.js :3000] -->|HTTP + cookie JSESSIONID :8080| BE[Backend Spring Boot :8080]
     BE -->|JDBC :5433| PG[(PostgreSQL 17 :5433)]
 ```
 
@@ -38,10 +38,11 @@ O que existe hoje no backend:
 
 - `GET /api/v1/health` — health técnico do serviço.
 - `GET /actuator/health` — health do Actuator (sem detalhes).
-- Tratamento global de erros com shape `{code, message, timestamp, path}`.
-- CORS liberado para `http://localhost:3000`.
+- Tratamento global de erros com shape `{code, message, timestamp, path}` (+ 404 padronizado para rota desconhecida).
+- **Prompt 02**: `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me` — sessão por cookie `JSESSIONID` transitório, BCrypt, tabela `users` (`V2`).
+- CORS liberado para `http://localhost:3000` com credenciais — **fonte única**: `SecurityConfig.corsConfigurationSource` (o antigo `WebMvcConfig` foi removido no Prompt 02).
 - Bean assíncrono (`taskExecutor`) como base futura de processamento assíncrono.
-- Flyway com `V1__init_schema.sql` (fundação — sem tabelas de domínio).
+- Flyway: `V1__init_schema.sql` (fundação) + `V2__create_users_table.sql` (identity).
 
 ## 4. Configuração por ambientes
 
@@ -60,9 +61,9 @@ Segredos nunca ficam no código: usa-se `.env` (gitignored) a partir de `.env.ex
 ## 5. Integração Frontend ↔ Backend
 
 - O frontend consome a API através de `NEXT_PUBLIC_API_URL` (default `http://localhost:8080`).
-- No Prompt 01 a única chamada técnica disponível é `GET /api/v1/health` — serve como smoke test da integração FE↔BE.
-- CORS no backend já permite origem `http://localhost:3000` com métodos `GET, POST, PUT, DELETE, OPTIONS` em `/**`.
+- Técnicas de smoke: `GET /api/v1/health`. Autenticadas (Prompt 02): `register`, `login`, `me` — sempre com `credentials: "include"` para transportar o cookie de sessão.
+- CORS no backend permite origem `http://localhost:3000` com `GET, POST, PUT, DELETE, OPTIONS` e `allowCredentials=true`, configurado unicamente no `SecurityConfig`.
 
 ## 6. Fora do escopo desta fundação
 
-Auth/login/tokens, RBAC, multi-tenancy, entidades de domínio (Organization, Membership, Project, Service, Monitor, Alert, Incident), scheduler, dashboards e notificações **não existem** e serão endereçados nos prompts futuros.
+RBAC, multi-tenancy, JWT/refresh, entidades de domínio (Organization, Membership, Project, Service, Monitor, Alert, Incident), scheduler, dashboards e notificações **não existem** e serão endereçados nos prompts futuros. (Auth/sessão transitória entrou no Prompt 02 — ver [identity.md](identity.md).)

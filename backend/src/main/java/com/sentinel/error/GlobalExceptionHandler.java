@@ -12,6 +12,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Traduz exceções para o shape ErrorResponse padrão da API.
@@ -43,6 +45,23 @@ public class GlobalExceptionHandler {
         }
         ErrorResponse body = new ErrorResponse("VALIDATION_ERROR", message, Instant.now(), request.getRequestURI());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * Corrige o P2 do Prompt 01: rota/resource inexistente caía no handler
+     * genérico (500). No Spring Framework 7 existem dois caminhos:
+     * NoResourceFoundException (resource handler de estáticos em /**, o
+     * habitual num app Boot) e NoHandlerFoundException (nenhum handler
+     * mapeado). Ambos → 404 NOT_FOUND no shape padrão.
+     */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<ErrorResponse> handleNotFound(Exception ex, HttpServletRequest request) {
+        ErrorResponse body = new ErrorResponse(
+                "NOT_FOUND",
+                "Resource not found",
+                Instant.now(),
+                request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     @ExceptionHandler(Exception.class)

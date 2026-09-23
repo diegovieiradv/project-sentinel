@@ -1,5 +1,6 @@
-/* Sentinel Prompt 01 — Foundation */
+/* Sentinel Prompt 02 — Identity */
 import HealthStatus from "@/components/HealthStatus";
+import AuthStatus from "@/components/AuthStatus";
 
 export default function Home() {
   return (
@@ -13,9 +14,14 @@ export default function Home() {
         </p>
         <div className="flex items-center gap-2 text-sm text-(--muted)">
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-(--muted)/80 bg-(--card)/50 dark:bg-(--card)/80">
-            <span>Prompt 01 — Foundation</span>
+            <span>Prompt 02 — Identity</span>
           </span>
         </div>
+      </div>
+
+      {/* Real session check via GET /api/v1/auth/me */}
+      <div className="mt-6">
+        <AuthStatus />
       </div>
 
       {/* Discreet backend health status */}

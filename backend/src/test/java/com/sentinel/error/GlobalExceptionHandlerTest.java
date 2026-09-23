@@ -17,6 +17,8 @@ import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Testes diretos do GlobalExceptionHandler (sem banco, sem MockMvc):
@@ -84,6 +86,33 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
         assertThat(response.getBody().getMessage()).contains("name: must not be blank");
+    }
+
+    @Test
+    void noResourceFoundReturns404WithNotFoundCode() {
+        NoResourceFoundException ex = new NoResourceFoundException(
+                org.springframework.http.HttpMethod.GET, "/api/v1/thing", "No static resource thing");
+
+        ResponseEntity<ErrorResponse> response = handler.handleNotFound(ex, request());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo("NOT_FOUND");
+        assertThat(response.getBody().getMessage()).isEqualTo("Resource not found");
+        assertThat(response.getBody().getPath()).isEqualTo("/api/v1/thing");
+    }
+
+    @Test
+    void noHandlerFoundReturns404WithNotFoundCode() {
+        NoHandlerFoundException ex = new NoHandlerFoundException(
+                "GET", "/api/v1/thing", new org.springframework.http.HttpHeaders());
+
+        ResponseEntity<ErrorResponse> response = handler.handleNotFound(ex, request());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo("NOT_FOUND");
+        assertThat(response.getBody().getPath()).isEqualTo("/api/v1/thing");
     }
 
     @SuppressWarnings("unused")

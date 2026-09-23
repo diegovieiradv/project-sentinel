@@ -2,25 +2,26 @@
 
 **Plataforma multi-tenant de observabilidade e gerenciamento de incidentes** — em construção.
 
-> **Aviso: este é o Prompt 01 de 18 — apenas a fundação. Login, organizações, monitoramento, alertas e incidentes NÃO existem ainda.**
+> **Aviso: este é o Prompt 02 de 18 — apenas fundação + identity. Organizações, monitoramento, alertas e incidentes NÃO existem ainda.**
 
 ## Estado atual
 
 - **Prompt 01 — fundação técnica**: repositório, backend Spring Boot mínimo (health + tratamento de erros + CORS + async), PostgreSQL via Docker Compose, documentação de arquitetura.
-- **NENHUMA funcionalidade de negócio implementada**: não há autenticação, tenants, organizações, projetos, serviços monitorados, alertas, incidentes nem dashboards.
+- **Prompt 02 — identity**: usuários (`users`), cadastro/login por sessão HTTP (`JSESSIONID`), `GET /api/v1/auth/me`, BCrypt, páginas de login/register no frontend.
+- **Ainda NÃO existem**: tenants, organizações, projetos, serviços monitorados, alertas, incidentes, dashboards nem RBAC.
 
 ## Stack atual
 
 | Camada | Tecnologia |
 | --- | --- |
 | Linguagem | Java 21 |
-| Backend | Spring Boot 4.1.1 (Web, Data JPA, Validation, Actuator) |
+| Backend | Spring Boot 4.1.1 (Web, Data JPA, Validation, Actuator, **Security**) |
 | Build | Maven 3.9+ |
 | Schema | Flyway |
 | Banco | PostgreSQL 17 (Docker) |
 | Infra local | Docker / Docker Compose |
 | Frontend | Next.js 16 + TypeScript |
-| Testes | JUnit 5 + Testcontainers |
+| Testes | JUnit 5 + Testcontainers + spring-security-test |
 
 ## Pré-requisitos
 
@@ -98,33 +99,38 @@ project-sentinel/
 ├── docker-compose.yml        # apenas PostgreSQL 17 (porta 5433)
 ├── README.md
 ├── docs/
-│   └── architecture-foundation.md
+│   ├── architecture-foundation.md
+│   └── identity.md               # contrato de auth/sessão do Prompt 02
 ├── backend/                  # Spring Boot (monólito modular)
 │   ├── pom.xml
 │   └── src/
 │       ├── main/java/com/sentinel/
 │       │   ├── SentinelApplication.java
-│       │   ├── config/       # CORS + async
+│       │   ├── config/       # async
 │       │   ├── error/        # tratamento global de erros
-│       │   └── health/       # endpoint técnico de health
-│       ├── main/resources/   # application*.yml + Flyway migrations
+│       │   ├── health/       # endpoint técnico de health
+│       │   └── identity/     # SecurityConfig + auth + users
+│       ├── main/resources/   # application*.yml + Flyway migrations (V1, V2)
 │       └── test/java/        # testes JUnit 5 + Testcontainers
-└── frontend/                 # Next.js (SPA) — outro agente/fluxo
+└── frontend/                 # Next.js — login/register/home
 ```
 
-## Endpoints técnicos
+## Endpoints
 
-| Método | Path | Descrição |
-| --- | --- | --- |
-| GET | `/api/v1/health` | Health técnico do serviço (`{"status":"UP",...}`) |
-| GET | `/actuator/health` | Health do Actuator (detalhes ocultos) |
+| Método | Path | Auth | Descrição |
+| --- | --- | --- | --- |
+| GET | `/api/v1/health` | público | Health técnico (`{"status":"UP",...}`) |
+| GET | `/actuator/health` | público | Health do Actuator (detalhes ocultos) |
+| POST | `/api/v1/auth/register` | público | Cadastro → `201 {user}` (não cria sessão) |
+| POST | `/api/v1/auth/login` | público | Login → `200 {user, tokenType:"session"}` + cookie `JSESSIONID` |
+| GET | `/api/v1/auth/me` | sessão | Usuário da sessão atual → `200 {id,name,email}` \| `401` |
 
-Ambos respondem em `http://localhost:8080`.
+Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md).
 
 ## Documentação de arquitetura
 
-Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas.
+Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, e [docs/identity.md](docs/identity.md) para o contrato de autenticação.
 
 ---
 
-**Prompt 01 de 18 — apenas a fundação.** Login, organizações, monitoramento, alertas e incidentes NÃO existem ainda.
+**Prompt 02 de 18 — fundação + identity.** Organizações, monitoramento, alertas e incidentes NÃO existem ainda.
