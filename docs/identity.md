@@ -1,6 +1,6 @@
 # Identity — Sentinel
 
-> **Prompt 03 de 18.** Este documento descreve **o que está construído**: autenticação *stateless* (access token JWT HS256 + refresh token opaco em cookie `HttpOnly` com rotação e revogação), CSRF em double-submit e CORS configurável. Autorização (RBAC), multi-tenancy e organizações continuam fora do escopo.
+> **Prompt 03 de 18** (escopo de auth; ajustado no **Prompt 04**). Este documento descreve **o que está construído**: autenticação *stateless* (access token JWT HS256 + refresh token opaco em cookie `HttpOnly` com rotação e revogação), CSRF em double-submit e CORS configurável. Multi-tenancy e organizações entraram no **Prompt 04** — ver [organizations.md](organizations.md); autorização por recurso (além dos papéis de organização), MFA e reset de senha continuam fora do escopo.
 
 ## 1. Escopo implementado
 
@@ -16,7 +16,8 @@
 | CSRF double-submit (`XSRF-TOKEN` / `X-XSRF-TOKEN`) | Construído |
 | CORS configurável por `app.cors.allowed-origins` | Construído |
 | 404 padronizado para rota desconhecida (sem autenticar) | Construído |
-| Organization / Membership / RBAC / MFA / reset de senha / dashboard | **Fora do escopo** |
+| Organization / Membership / papéis por organização (`Role`) | Construído no **Prompt 04** → [organizations.md](organizations.md) |
+| MFA / reset de senha / verificação de e-mail / dashboard | **Fora do escopo** |
 
 ## 2. Modelo de autenticação
 
@@ -125,7 +126,7 @@ Base: `http://localhost:8080`
 
 - Habilitado com `http.csrf(csrf -> csrf.spa())`: cookie legível pelo JS `XSRF-TOKEN` + header `X-XSRF-TOKEN`.
 - `CsrfTokenCookieAdvice` materializa o cookie em **toda requisição MVC** (inclusive `GET /api/v1/health`, que é o endpoint que o frontend usa para obter o token antes do primeiro POST).
-- Todo `POST` sem o header, ou com header ≠ cookie, recebe **403** no shape padrão `{"code":"FORBIDDEN",...}`.
+- Todo método não-safe sem o header, ou com header ≠ cookie, recebe **403** no shape padrão `{"code":"FORBIDDEN",...}` — no Prompt 03 isso era só `POST`; o Prompt 04 passou a usar também `PATCH` e `DELETE` (gestão de membros), com a mesma regra.
 - Em testes o fluxo é o real: `GET /health` → ler o cookie da resposta → enviar cookie + header. **Nenhum teste usa `.with(csrf())`.**
 
 ## 5. CORS
@@ -133,7 +134,7 @@ Base: `http://localhost:8080`
 - Fonte única: `SecurityConfig.corsConfigurationSource`, consumido pelo filter chain (cobre preflight).
 - Origens: `app.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`), lista separada por vírgula, default `http://localhost:3000`.
 - `allowCredentials(true)` + origem exata (nunca `*` — rejeitado pelo Spring e permitiria ler cookies de qualquer site).
-- Headers permitidos: `Content-Type`, `Authorization`, `X-XSRF-TOKEN`, `Accept`; métodos `GET, POST, PUT, DELETE, OPTIONS`; preflight 3600 s.
+- Headers permitidos: `Content-Type`, `Authorization`, `X-XSRF-TOKEN`, `X-Organization-Id`, `Accept`; métodos `GET, POST, PUT, PATCH, DELETE, OPTIONS`; preflight 3600 s. (`PATCH` e `X-Organization-Id` entraram no **Prompt 04** — `PATCH` no papel de membro e o header na resolução de tenant.)
 - Origem não permitida → `403 Invalid CORS request` sem `Access-Control-Allow-Origin`.
 - O preflight responde `Access-Control-Allow-Headers` com os headers **pedidos que estão na lista branca** (o Spring normaliza para minúsculas).
 
@@ -157,7 +158,7 @@ Shape padrão (Prompt 01):
 | `REFRESH_TOKEN_REVOKED` | 401 | Token rotacionado/revoado (reuso) ou corrida perdida |
 | `EMAIL_ALREADY_EXISTS` | 409 | Email já cadastrado |
 | `NOT_FOUND` | 404 | Rota desconhecida (`NoResourceFoundException`/`NoHandlerFoundException`) |
-| `INTERNAL` | 500 | Erros inesperados |
+| `INTERNAL_ERROR` | 500 | Erros inesperados |
 
 Mensagens de credenciais são **idênticas** para todos os casos de login inválido: `"Invalid email or password"`.
 
@@ -201,9 +202,11 @@ com.sentinel
 │       ├── User.java                  # entidade `users` + UserDetails
 │       ├── UserRepository.java
 │       └── UserService.java           # register (política/BCrypt/409) + authenticate (401)
-├── error/GlobalExceptionHandler.java  # + handler 404
+├── error/GlobalExceptionHandler.java  # + handlers 404 e 405 (405 veio no Prompt 04)
 └── config/                            # async
 ```
+
+> O pacote `organization/` (Tenant Context, organizações e membros) entrou no **Prompt 04** e está documentado em [organizations.md](organizations.md).
 
 - `RefreshToken.user` é **`EAGER` de propósito**: todo leitor (rotação, reuso, logout) precisa do dono depois que a sessão JPA já fechou; um proxy `LAZY` explodiria em `LazyInitializationException` ao montar o `AuthResponse`.
 - `UserJwtAuthenticationConverter` **não** é `@Component`: `@WebMvcTest` varre toda classe que implementa `Converter` e puxaria `UserRepository` para um contexto sem JPA. O bean é declarado em `SecurityConfig`.
@@ -224,15 +227,16 @@ com.sentinel
 
 ## 10. Testes
 
-- `mvn test` — **54 testes, 0 falhas**:
-  - `AuthIntegrationTest` (31): register (8), CSRF/materialização do cookie e 403, login stateless, `/me`, Bearer negativos (malformado, chave errada, `sub` desconhecido, expirado, usuário desativado), CORS/preflight/origem estrangeira, 404.
+- `mvn test` — **100 testes, 0 falhas** (contagem confirmada pela execução no Prompt 04; eram 54 antes dele):
+  - `AuthIntegrationTest` (32): register (8), CSRF/materialização do cookie e 403, login stateless, `/me`, Bearer negativos (malformado, chave errada, `sub` desconhecido, expirado, usuário desativado), CORS/preflight/origem estrangeira (incluindo o preflight com `PATCH` + `X-Organization-Id` do Prompt 04), 404.
   - `RefreshTokenIntegrationTest` (11): hash SHA-256 de 64 chars no banco, ausência do token no corpo JSON, rotação, reuso → revogação em massa, token forjado/expirado/ausente, logout idempotente, fluxo completo, atributos do cookie.
-  - `UserRepositoryTest` (5), `GlobalExceptionHandlerTest` (5), `HealthControllerTest` (1), `SentinelApplicationTests` (1).
+  - `UserRepositoryTest` (5), `GlobalExceptionHandlerTest` (6 — a 6ª cobre o `405 METHOD_NOT_ALLOWED` do Prompt 04), `HealthControllerTest` (1), `SentinelApplicationTests` (1).
+  - `OrganizationIntegrationTest` (12), `MembershipIntegrationTest` (24), `MultiTenantScenarioTest` (8) — multi-tenancy do Prompt 04, detalhados em [organizations.md](organizations.md).
 - Cada classe `@SpringBootTest` tem seu próprio `PostgreSQLContainer` → contexto próprio (o `ServiceConnectionContextCustomizer` usa igualdade por identidade do container).
 - Frontend: adaptado ao contrato stateless (access token em memória, CSRF via `X-XSRF-TOKEN`, bootstrap via `POST /refresh`). Validação: `npm run lint && npm run type-check && npm run build` — executado com exit 0.
 
 ## 11. Fora do escopo (prompts futuros)
 
-- RBAC (papéis/permissões), recuperação de senha, verificação de email, MFA.
-- Organization / Membership / multi-tenancy, dashboard.
+- Permissões por recurso além dos papéis de organização (`ADMIN`/`OPERATOR`/`VIEWER`, Prompt 04), recuperação de senha, verificação de email, MFA.
+- Dashboard.
 - Job de expurgo dos refresh tokens revogados/expirados.

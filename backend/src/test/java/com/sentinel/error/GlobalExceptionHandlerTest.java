@@ -16,6 +16,7 @@ import org.springframework.core.MethodParameter;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -113,6 +114,23 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getCode()).isEqualTo("NOT_FOUND");
         assertThat(response.getBody().getPath()).isEqualTo("/api/v1/thing");
+    }
+
+    @Test
+    void methodNotAllowedReturns405WithMethodInMessageAndStandardShape() {
+        // D7 (Prompt 04): sem este handler a exceção cairia no catch-all e
+        // viraria 500 INTERNAL_ERROR
+        HttpRequestMethodNotSupportedException ex =
+                new HttpRequestMethodNotSupportedException("DELETE", java.util.List.of("GET"));
+
+        ResponseEntity<ErrorResponse> response = handler.handleMethodNotAllowed(ex, request());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo("METHOD_NOT_ALLOWED");
+        assertThat(response.getBody().getMessage()).isEqualTo("Method DELETE not allowed");
+        assertThat(response.getBody().getPath()).isEqualTo("/api/v1/thing");
+        assertThat(response.getBody().getTimestamp()).isNotNull();
     }
 
     @SuppressWarnings("unused")

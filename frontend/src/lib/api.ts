@@ -2,6 +2,8 @@
  * Minimal API client for Sentinel frontend.
  *
  * Auth (Prompt 03): access token em memória + refresh token em cookie HttpOnly + CSRF.
+ * Multi-tenancy (Prompt 04): org ativa em memória + UUID persistido no localStorage
+ * (`sentinel.activeOrganizationId`), sempre validado contra a lista de orgs do usuário.
  *
  * - Access token: guardado em variável de módulo (memória somente). NUNCA em localStorage/sessionStorage/cookie próprio.
  * - Refresh token: cookie HttpOnly do navegador — o JS nunca o lê nem manipula.
@@ -22,6 +24,29 @@ export interface UserResponse {
   id: string;
   name: string;
   email: string;
+}
+
+/** Papéis de organização — espelha o enum `Role` do backend (ADMIN/OPERATOR/VIEWER). */
+export type OrganizationRole = "ADMIN" | "OPERATOR" | "VIEWER";
+
+/** Resposta de organização do backend (contrato de `OrganizationResponse` do backend). */
+export interface OrganizationResponse {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Papel do usuário autenticado NA organização (obrigatório no contrato). */
+  role: OrganizationRole;
+}
+
+/** Resposta de membro de organização (payload admin-only com e-mails). */
+export interface MemberResponse {
+  membershipId: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: OrganizationRole;
+  createdAt: string;
 }
 
 /** Inputs */
@@ -81,6 +106,63 @@ export function setAccessToken(token: string | null): void {
 /** Limpa o token em memória (chamado por logout e após refresh 401). */
 export function clearAccessToken(): void {
   accessToken = null;
+}
+
+/** UUID da organização ativa em memória (Prompt 04). */
+let activeOrganizationId: string | null = null;
+
+/** Chave no localStorage para persistir a org ativa entre sessões. */
+const ACTIVE_ORG_LOCAL_STORAGE_KEY = "sentinel.activeOrganizationId";
+
+/**
+ * Evento de browser disparado por `apiFetch` quando a API responde **401**.
+ * `AuthStatus` o escuta para limpar a sessão em memória e assumir estado anônimo
+ * (um 401 em qualquer chamada derruba a sessão inteira, não só a chamada que falhou).
+ */
+export const SESSION_EXPIRED_EVENT = "sentinel:session-expired";
+
+/** Persiste o UUID da org ativa no localStorage (ou remove). */
+function persistActiveOrgId(id: string | null): void {
+  if (typeof window === "undefined") return;
+  if (id) {
+    try {
+      localStorage.setItem(ACTIVE_ORG_LOCAL_STORAGE_KEY, id);
+    } catch {
+      // Ignorar erros de storage (ex.: modo privado sem persistência)
+    }
+  } else {
+    try {
+      localStorage.removeItem(ACTIVE_ORG_LOCAL_STORAGE_KEY);
+    } catch {
+      // Ignorar erros de storage
+    }
+  }
+}
+
+/** Obtém a org ativa: primeiro memória, depois localStorage. */
+export function getOrganizationId(): string | null {
+  if (activeOrganizationId) return activeOrganizationId;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(ACTIVE_ORG_LOCAL_STORAGE_KEY);
+      if (stored) return stored;
+    } catch {
+      // Ignorar erros de leitura de storage
+    }
+  }
+  return null;
+}
+
+/** Define a org ativa em memória e persiste no localStorage. */
+export function setOrganizationId(id: string | null): void {
+  activeOrganizationId = id;
+  persistActiveOrgId(id);
+}
+
+/** Limpa a org ativa da memória e do localStorage. */
+export function clearOrganizationId(): void {
+  activeOrganizationId = null;
+  persistActiveOrgId(null);
 }
 
 /**
@@ -190,6 +272,18 @@ async function apiFetch<T>(
     headers["X-XSRF-TOKEN"] = xsrfToken;
   }
 
+  // Injeta X-Organization-Id apenas quando o path NÃO já carrega a org.
+  // O `TenantInterceptor` do backend trata o path como fonte principal e responde
+  // 404 quando path e header divergem — enviar o header ao lado de um {organizationId}
+  // diferente da org ativa abriria esse 404. Assim o header fica reservado para os
+  // endpoints tenant-scoped SEM org no path (complementar/futuro) e nunca conflita
+  // com os atuais (`GET/POST /organizations` não são @TenantScoped e o ignoram).
+  const orgId = getOrganizationId();
+  const pathHasOrganization = /\/api\/v1\/organizations\/[^/?]+/.test(path);
+  if (orgId && !pathHasOrganization) {
+    headers["X-Organization-Id"] = orgId;
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     ...defaultInit(),
     ...init,
@@ -204,6 +298,11 @@ async function apiFetch<T>(
     } catch {
       // corpo não-JSON (ex.: 502 de proxy) — cai no fallback abaixo
     }
+    // 401 = sessão inválida/expirada em QUALQUER chamada → avisa os ouvintes
+    // (AuthStatus limpa o token e assume estado anônimo).
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
     throw new ApiError(
       res.status,
       body?.code ?? "UNKNOWN",
@@ -212,7 +311,15 @@ async function apiFetch<T>(
     );
   }
 
-  return (await res.json()) as T;
+  // 204 (DELETE de membro) e respostas sem corpo não têm JSON a parsear.
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  const raw = await res.text();
+  if (!raw) {
+    return undefined as T;
+  }
+  return JSON.parse(raw) as T;
 }
 
 /** GET /api/v1/health → status do backend. */
@@ -347,8 +454,94 @@ export async function logout(): Promise<{
     // Se a rede falhar, ainda assim limpa o token local para evitar ficar "preso" em estado autenticado.
   } finally {
     clearAccessToken();
+    clearOrganizationId();
   }
 
   // O backend já limpa o cookie refresh (Max-Age=0). Retornamos o que conseguimos.
   return { message: "Logged out" };
+}
+
+/** GET /api/v1/organizations → **200** lista APENAS das orgs do usuário, cada uma com `role`. */
+export async function listOrganizations(): Promise<OrganizationResponse[]> {
+  return apiFetch<OrganizationResponse[]>("/api/v1/organizations");
+}
+
+/** POST /api/v1/organizations → **201** organização (id, name, createdAt, updatedAt + seu papel). **400** nome vazio/>128. */
+export async function createOrganization(name: string): Promise<OrganizationResponse> {
+  return apiFetch<OrganizationResponse>("/api/v1/organizations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name }),
+  });
+}
+
+/** GET /api/v1/organizations/{id} → **200** org + role | **404** (não membro/inexistente). */
+export async function getOrganization(id: string): Promise<OrganizationResponse> {
+  return apiFetch<OrganizationResponse>(`/api/v1/organizations/${id}`);
+}
+
+/**
+ * GET /api/v1/organizations/{organizationId}/members → **200** lista de membros.
+ * **403** se o papel do usuário na org não for ADMIN | **404** se não for membro.
+ * Admin-only no backend: é o único payload que expõe e-mails de outros usuários.
+ */
+export async function listMembers(organizationId: string): Promise<MemberResponse[]> {
+  return apiFetch<MemberResponse[]>(`/api/v1/organizations/${organizationId}/members`);
+}
+
+/**
+ * POST /api/v1/organizations/{organizationId}/members → **201** membro criado.
+ * **404** e-mail não cadastrado (genérico) | **409** `MEMBERSHIP_ALREADY_EXISTS` | **403** não ADMIN.
+ */
+export async function addMember(
+  organizationId: string,
+  email: string,
+  role: OrganizationRole
+): Promise<MemberResponse> {
+  return apiFetch<MemberResponse>(`/api/v1/organizations/${organizationId}/members`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, role }),
+  });
+}
+
+/**
+ * PATCH /api/v1/organizations/{organizationId}/members/{membershipId} → **200** membro atualizado.
+ * **409** `LAST_ADMIN_REQUIRED` | **403** não ADMIN | **404** membership inexistente/outro tenant.
+ */
+export async function updateMemberRole(
+  organizationId: string,
+  membershipId: string,
+  role: OrganizationRole
+): Promise<MemberResponse> {
+  return apiFetch<MemberResponse>(
+    `/api/v1/organizations/${organizationId}/members/${membershipId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ role }),
+    }
+  );
+}
+
+/**
+ * DELETE /api/v1/organizations/{organizationId}/members/{membershipId} → **204** sem corpo.
+ * **409** `LAST_ADMIN_REQUIRED` | **403** não ADMIN | **404** membership inexistente/outro tenant.
+ */
+export async function removeMember(
+  organizationId: string,
+  membershipId: string
+): Promise<void> {
+  await apiFetch<void>(
+    `/api/v1/organizations/${organizationId}/members/${membershipId}`,
+    {
+      method: "DELETE",
+    }
+  );
 }

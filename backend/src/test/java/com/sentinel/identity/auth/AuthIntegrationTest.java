@@ -394,6 +394,24 @@ class AuthIntegrationTest {
                         .containsStringIgnoringCase("x-xsrf-token")));
     }
 
+    @Test
+    void preflightAdmitsPatchAndOrganizationIdHeaderForTenantModule() throws Exception {
+        // Prompt 04: PATCH (role de membro) e X-Organization-Id (Tenant Context)
+        // precisam sobreviver ao preflight — sem isso o frontend é bloqueado
+        mockMvc.perform(options("/api/v1/organizations")
+                        .header(HttpHeaders.ORIGIN, FRONTEND_ORIGIN)
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "PATCH")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                                "content-type,x-xsrf-token,x-organization-id"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, FRONTEND_ORIGIN))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS,
+                        org.hamcrest.Matchers.containsString("PATCH")))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                        org.hamcrest.Matchers.containsStringIgnoringCase("x-organization-id")));
+    }
+
     // --- login / sessionless ----------------------------------------------
 
     @Test

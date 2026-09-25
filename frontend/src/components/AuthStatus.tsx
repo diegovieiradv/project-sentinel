@@ -8,7 +8,9 @@ import {
   logout,
   getAccessToken,
   clearAccessToken,
+  clearOrganizationId,
   ApiError,
+  SESSION_EXPIRED_EVENT,
   type UserResponse,
 } from "@/lib/api";
 
@@ -18,6 +20,23 @@ type AuthState =
   | { kind: "authed"; user: UserResponse }
   | { kind: "error"; message: string };
 
+/** Fases de sessão expostas ao componente pai (a home usa para gatear a lista de orgs). */
+export type AuthStateKind = AuthState["kind"];
+
+export interface AuthStatusProps {
+  /**
+   * Notifica o componente pai a cada transição de sessão.
+   *
+   * A home usa isto para (a) só consultar `/organizations` depois que a sessão
+   * está confirmada — sem isso a listagem dispararia junto com o bootstrap do
+   * refresh e cairia em 401 na corrida — e (b) limpar o estado de organizações
+   * quando o usuário sai ou a sessão expira.
+   * Deve ser estável (`useCallback` com deps `[]`) para o efeito notificar só
+   * quando o estado de fato muda.
+   */
+  onAuthStateChange?: (kind: AuthStateKind) => void;
+}
+
 /**
  * Bootstrap de sessão Prompt 03:
  * - Se houver access token em memória → chama me() para confirmar.
@@ -26,8 +45,10 @@ type AuthState =
  * - 401 em qualquer etapa → estado anônimo.
  * - Erro de rede/5xx → estado de erro (não finge que o usuário está autenticado).
  * - Durante todo o bootstrap mantém loading — não mostra "Signed in" antes de confirmar.
+ * - Escuta SESSION_EXPIRED_EVENT: um 401 em QUALQUER chamada da API (ex.:
+ *   listagem de organizações) derruba a sessão inteira para estado anônimo.
  */
-export default function AuthStatus() {
+export default function AuthStatus({ onAuthStateChange }: AuthStatusProps = {}) {
   const [state, setState] = useState<AuthState>({ kind: "loading" });
   // Evita duplo clique e desabilita o botão enquanto o POST /logout está em voo.
   const [loggingOut, setLoggingOut] = useState(false);
@@ -87,8 +108,10 @@ export default function AuthStatus() {
           err instanceof ApiError &&
           err.status === 401
         ) {
-          // Sessão expirada ou token inválido — limpa token e vai para anônimo
+          // Sessão expirada ou token inválido — limpa token, descarta a org
+          // ativa (memória + localStorage) e vai para anônimo
           clearAccessToken();
+          clearOrganizationId();
           if (!cancelled) setState({ kind: "anon" });
           return;
         }
@@ -110,6 +133,34 @@ export default function AuthStatus() {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  /**
+   * Reporta a fase de sessão ao componente pai (a home gateia a carga de
+   * organizações nisso). O callback deve ser estável (`useCallback` no pai)
+   * para o efeito só disparar quando `state.kind` realmente muda.
+   */
+  useEffect(() => {
+    onAuthStateChange?.(state.kind);
+  }, [state.kind, onAuthStateChange]);
+
+  /**
+   * 401 em qualquer chamada da API (o `apiFetch` dispara o evento) → limpa o
+   * token em memória E a organização ativa (memória + localStorage) e assume
+   * estado anônimo — derruba a sessão inteira, não apenas a chamada que falhou,
+   * para a próxima conta não herdar a org da anterior.
+   */
+  useEffect(() => {
+    function onSessionExpired(): void {
+      clearAccessToken();
+      clearOrganizationId();
+      setState({ kind: "anon" });
+    }
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
     };
   }, []);
 

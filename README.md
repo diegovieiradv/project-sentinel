@@ -2,16 +2,17 @@
 
 **Plataforma multi-tenant de observabilidade e gerenciamento de incidentes** — em construção.
 
-> **Aviso: este é o Prompt 03 de 18 — fundação + identity stateless. Organizações, monitoramento, alertas e incidentes NÃO existem ainda.**
+> **Aviso: este é o Prompt 04 de 18 — multi-tenancy (organizações + membros). Monitoramento, alertas e incidentes NÃO existem ainda.**
 
 ## Estado atual
 
 - **Prompt 01 — fundação técnica**: repositório, backend Spring Boot mínimo (health + tratamento de erros + CORS + async), PostgreSQL via Docker Compose, documentação de arquitetura.
 - **Prompt 02 — identity**: usuários (`users`), cadastro/login por sessão HTTP (`JSESSIONID`), `GET /api/v1/auth/me`, BCrypt, páginas de login/register no frontend.
 - **Prompt 03 — identity stateless**: access token JWT HS256 (15 min) + refresh token opaco em cookie `HttpOnly` (7 dias) com rotação, revogação e logout, CSRF double-submit, CORS configurável, migrations `V3`.
-- **Ainda NÃO existem**: tenants, organizações, projetos, serviços monitorados, alertas, incidentes, dashboards nem RBAC.
+- **Prompt 04 — multi-tenancy**: organizações (tenants) e memberships com papéis por organização (`ADMIN` / `OPERATOR` / `VIEWER`), `TenantContext` (ThreadLocal) + `TenantInterceptor` + `@TenantScoped`, regra do último ADMIN (`409 LAST_ADMIN_REQUIRED`) sob lock pessimista (`SELECT ... FOR UPDATE`), isolamento cross-tenant com `404` genérico anti-enumeração, handler global de `405`, migration `V4`. CORS agora também aceita `PATCH` e o header `X-Organization-Id`.
+- **Ainda NÃO existem**: projetos, serviços monitorados, coleta/monitoramento, alertas, incidentes, dashboards, trilha de auditoria, recuperação de senha, verificação de e-mail nem MFA.
 
-> O **frontend foi adaptado** a este contrato: access token em memória + header `Authorization: Bearer`, refresh token em cookie `HttpOnly`, CSRF por header `X-XSRF-TOKEN` e bootstrap de sessão via `POST /api/v1/auth/refresh`.
+> O **frontend foi adaptado** a este contrato: access token em memória + header `Authorization: Bearer`, refresh token em cookie `HttpOnly`, CSRF por header `X-XSRF-TOKEN` e bootstrap de sessão via `POST /api/v1/auth/refresh`. No Prompt 04 ele também passou a listar/criar/selecionar organizações e gerenciar membros.
 
 ## Stack atual
 
@@ -108,7 +109,8 @@ project-sentinel/
 ├── README.md
 ├── docs/
 │   ├── architecture-foundation.md
-│   └── identity.md               # contrato de auth do Prompt 03 (stateless)
+│   ├── identity.md               # contrato de auth do Prompt 03 (stateless)
+│   └── organizations.md          # contrato multi-tenant do Prompt 04
 ├── backend/                  # Spring Boot (monólito modular)
 │   ├── pom.xml
 │   └── src/
@@ -117,12 +119,15 @@ project-sentinel/
 │       │   ├── JwtProperties.java / JwtConfiguration.java   # config JWT
 │       │   ├── SecurityConfig.java  # filter chain, CSRF, CORS, converter
 │       │   ├── config/       # async
-│       │   ├── error/        # tratamento global de erros
+│       │   ├── error/        # tratamento global de erros (404, 405, 500)
 │       │   ├── health/       # endpoint técnico de health
-│       │   └── identity/     # auth (controller/JWT/CSRF) + token/ (refresh) + users
-│       ├── main/resources/   # application*.yml + Flyway migrations (V1, V2, V3)
-│       └── test/java/        # testes JUnit 5 + Testcontainers
-└── frontend/                 # Next.js — login/register/home
+│       │   ├── identity/     # auth (controller/JWT/CSRF) + token/ (refresh) + users
+│       │   └── organization/ # multi-tenancy: context/ (TenantContext), model/
+│       │                     #   (Organization, Membership, Role), dto/, repository/,
+│       │                     #   service/ e web/ (controllers + TenantInterceptor)
+│       ├── main/resources/   # application*.yml + Flyway migrations (V1–V4)
+│       └── test/java/        # testes JUnit 5 + Testcontainers (identity, organization, error, health)
+└── frontend/                 # Next.js — login/register/home + organizações e membros
 ```
 
 ## Endpoints
@@ -136,15 +141,24 @@ project-sentinel/
 | POST | `/api/v1/auth/refresh` | cookie | Rotaciona o refresh → `200 {user, accessToken}` + cookie novo \| `401 REFRESH_TOKEN_*` |
 | POST | `/api/v1/auth/logout` | cookie | Revoga o refresh apresentado e limpa o cookie → `200 {message}` (idempotente) |
 | GET | `/api/v1/auth/me` | Bearer | Usuário do access token → `200 {id,name,email}` \| `401` |
+| POST | `/api/v1/organizations` | Bearer + CSRF | Cria a organização e vincula o criador como `ADMIN` (mesma transação) → `201 {id,name,createdAt,updatedAt,role:"ADMIN"}` \| `400 VALIDATION_ERROR` |
+| GET | `/api/v1/organizations` | Bearer | Lista **apenas** as organizações do usuário → `200 [{id,name,createdAt,updatedAt,role}]` (nunca globais) |
+| GET | `/api/v1/organizations/{organizationId}` | Bearer (membro) | Detalhe + `role` do usuário atual → `200 {id,name,createdAt,updatedAt,role}` \| `404` não-membro/inexistente |
+| GET | `/api/v1/organizations/{organizationId}/members` | Bearer + **ADMIN** | `200 [{membershipId,userId,name,email,role,createdAt}]` \| `403 FORBIDDEN` \| `404` não-membro |
+| POST | `/api/v1/organizations/{organizationId}/members` | Bearer + **ADMIN** + CSRF | `{email, role}` → `201 MemberResponse` \| `400` \| `403` \| `404` (e-mail não cadastrado) \| `409 MEMBERSHIP_ALREADY_EXISTS` |
+| PATCH | `/api/v1/organizations/{organizationId}/members/{membershipId}` | Bearer + **ADMIN** + CSRF | `{role}` → `200 MemberResponse` \| `409 LAST_ADMIN_REQUIRED` \| `404` membership inexistente/outro tenant |
+| DELETE | `/api/v1/organizations/{organizationId}/members/{membershipId}` | Bearer + **ADMIN** + CSRF | Remove o membro → `204` sem corpo \| `409 LAST_ADMIN_REQUIRED` \| `404` |
 
-Todos os `POST` exigem CSRF double-submit: cookie `XSRF-TOKEN` + header `X-XSRF-TOKEN`.
+Todo método não-safe exige CSRF double-submit: cookie `XSRF-TOKEN` + header `X-XSRF-TOKEN`.
 
-Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md).
+Rotas existentes com método HTTP inválido respondem `405 METHOD_NOT_ALLOWED` no shape padrão de erro.
+
+Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md) (auth) e [docs/organizations.md](docs/organizations.md) (multi-tenancy).
 
 ## Documentação de arquitetura
 
-Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, e [docs/identity.md](docs/identity.md) para o contrato de autenticação.
+Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, [docs/identity.md](docs/identity.md) para o contrato de autenticação e [docs/organizations.md](docs/organizations.md) para o contrato multi-tenant (organizações, membros e Tenant Context).
 
 ---
 
-**Prompt 03 de 18 — fundação + identity stateless.** Organizações, monitoramento, alertas e incidentes NÃO existem ainda.
+**Prompt 04 de 18 — multi-tenancy (organizações + membros).** Monitoramento, alertas e incidentes NÃO existem ainda.
