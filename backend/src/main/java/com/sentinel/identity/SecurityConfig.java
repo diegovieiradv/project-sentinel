@@ -1,12 +1,16 @@
 package com.sentinel.identity;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 
 import com.sentinel.error.ErrorResponse;
+import com.sentinel.identity.auth.UserJwtAuthenticationConverter;
+import com.sentinel.identity.user.UserRepository;
 
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -20,10 +24,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
-import org.springframework.security.web.context.DelegatingSecurityContextRepository;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
-import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -31,46 +31,55 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Segurança do Prompt 02 — Identity.
+ * Segurança do Prompt 03 — Identity stateless.
  *
- * <p><b>Auth transitória</b>: sessão HTTP server-side (cookie JSESSIONID,
- * SessionCreationPolicy.IF_REQUIRED). SEM JWT/refresh — chega no Prompt 03.
- * Controllers leem o principal via {@code @AuthenticationPrincipal}/
- * SecurityContextHolder para facilitar essa troca.</p>
+ * <p><b>Auth</b>: nenhum servidor de sessão. Access token HS256 no header
+ * {@code Authorization: Bearer} ({@code SessionCreationPolicy.STATELESS} +
+ * converter JWT → entidade {@code User}); refresh token opaco em cookie
+ * {@code HttpOnly} rotacionado por {@code /api/v1/auth/refresh}.</p>
+ *
+ * <p><b>CSRF</b>: habilitado em double-submit com cookie legível pelo JS
+ * ({@code XSRF-TOKEN} / header {@code X-XSRF-TOKEN}), via
+ * {@code csrf.spa()}. O cookie é materializado em toda requisição MVC pelo
+ * {@code CsrfTokenCookieAdvice}; todo POST exige o header correspondente.</p>
  *
  * <p><b>CORS</b>: única fonte de verdade da aplicação (o bean
- * {@code corsConfigurationSource} é consumido pelo filter chain e cobre
- * todas as requisições, incluindo preflight). Origem exata + credenciais
- * para o cookie de sessão funcionar de localhost:3000.</p>
- *
- * <p><b>CSRF desabilitado</b> (justificativa): API JSON cross-origin com
- * CORS restrito à origem exata do frontend e cookies SameSite=Lax por
- * default dos navegadores modernos (bloqueia POST cross-site). Persistir
- * token de sessão exige handshake CSRF explícito — é exatamente o que o
- * Prompt 03 substitui ao migrar para JWT/refresh com_cookies dedicados.</p>
+ * {@code corsConfigurationSource} é consumido pelo filter chain e cobre todas
+ * as requisições, incluindo preflight). Origem exata + credenciais para o
+ * cookie de refresh funcionar de localhost:3000. Headers explícitos — nunca
+ * {@code "*"} junto de {@code allowCredentials(true)}.</p>
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     /** Origem exata do frontend em dev — nunca "*" com allowCredentials(true). */
-    static final String FRONTEND_ORIGIN = "http://localhost:3000";
+    static final String DEFAULT_FRONTEND_ORIGIN = "http://localhost:3000";
+
+    /**
+     * Declared here instead of {@code @Component} on purpose: {@code @WebMvcTest}
+     * scans every {@link org.springframework.core.convert.converter.Converter},
+     * and a component-level bean would drag {@code UserRepository} (JPA) into
+     * MVC slices that do not boot JPA. As an inner {@code @Bean} it exists only
+     * where the security chain exists.
+     */
+    @Bean
+    UserJwtAuthenticationConverter userJwtAuthenticationConverter(UserRepository userRepository) {
+        return new UserJwtAuthenticationConverter(userRepository);
+    }
 
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            SecurityContextRepository securityContextRepository,
+            UserJwtAuthenticationConverter jwtAuthenticationConverter,
             AuthenticationEntryPoint authenticationEntryPoint,
             AccessDeniedHandler accessDeniedHandler) throws Exception {
         http
-                // CSRF off: ver justificativa na javadoc desta classe.
-                .csrf(csrf -> csrf.disable())
+                // Double-submit: cookie XSRF-TOKEN não-HttpOnly + resolução do header cru.
+                .csrf(csrf -> csrf.spa())
                 // Preflight OPTIONS processado pelo CorsFilter antes da autorização.
                 .cors(Customizer.withDefaults())
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
-                .securityContext(context ->
-                        context.securityContextRepository(securityContextRepository))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptionHandling -> exceptionHandling
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
@@ -80,41 +89,48 @@ public class SecurityConfig {
                                 "/api/v1/health",
                                 "/actuator/health",
                                 "/api/v1/auth/register",
-                                "/api/v1/auth/login")
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout")
                         .permitAll()
-                        .anyRequest().authenticated());
+                        .anyRequest().authenticated())
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         return http.build();
     }
 
     /**
      * Única fonte de verdade de CORS (filter chain). allowCredentials(true)
      * exige origem exata — http://localhost:3000 — e é o que permite o
-     * navegador enviar/receber o cookie JSESSIONID via fetch credenciado.
+     * navegador enviar/receber os cookies refresh_token e XSRF-TOKEN via
+     * fetch credenciado.
+     *
+     * <p>O header {@code X-XSRF-TOKEN} precisa estar declarado: sem isso o
+     * preflight bloqueia o double-submit CSRF cross-origin.</p>
+     *
+     * <p>{@code app.cors.allowed-origins} aceita origens separadas por vírgula.
+     * {@code "*"} não é aceito aqui: combinado com allowCredentials(true) ele é
+     * rejeitado pelo Spring e, mesmo se passasse, permitiria qualquer site a
+     * ler o cookie de refresh.</p>
      */
     @Bean
-    CorsConfigurationSource corsConfigurationSource() {
+    CorsConfigurationSource corsConfigurationSource(
+            @Value("${app.cors.allowed-origins:" + DEFAULT_FRONTEND_ORIGIN + "}") String allowedOrigins) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(FRONTEND_ORIGIN));
+        configuration.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedHeaders(List.of("Content-Type", "Authorization", "X-XSRF-TOKEN", "Accept"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
-    }
-
-    /**
-     * Repositório de contexto explícito (request attribute + HTTP session),
-     * compartilhado entre o filtro que carrega a sessão e o AuthController
-     * que grava a sessão no login.
-     */
-    @Bean
-    SecurityContextRepository securityContextRepository() {
-        return new DelegatingSecurityContextRepository(
-                new RequestAttributeSecurityContextRepository(),
-                new HttpSessionSecurityContextRepository());
     }
 
     @Bean
@@ -130,7 +146,7 @@ public class SecurityConfig {
                         "UNAUTHORIZED", "Authentication required", request.getRequestURI());
     }
 
-    /** 403 no mesmo shape padrão (acesso de sessão autenticada a recurso proibido). */
+    /** 403 no mesmo shape padrão (CSRF ausente/inválido ou acesso proibido). */
     @Bean
     AccessDeniedHandler accessDeniedHandler(ObjectMapper objectMapper) {
         return (request, response, accessDeniedException) ->

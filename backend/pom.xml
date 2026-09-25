@@ -44,6 +44,17 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- Prompt 03 — Identity stateless: emissão (NimbusJwtEncoder) e validação
+             (NimbusJwtDecoder) de JWT HS256 + BearerTokenAuthenticationFilter.
+             Verificado com `mvn dependency:tree`: spring-security-oauth2-jose /
+             oauth2-resource-server NÃO estavam no classpath antes desta entrada.
+             Escolha mantida do ecossistema Spring Security para JWT (em vez de
+             bibliotecas de terceiros como jjwt/java-jwt). Versão gerenciada pelo
+             BOM do parent (spring-boot-starter-parent 4.1.1). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>

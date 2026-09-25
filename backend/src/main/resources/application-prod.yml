@@ -11,3 +11,12 @@ spring:
     show-sql: false
   flyway:
     validate-on-migrate: true
+
+jwt:
+  # Fail-fast no perfil prod: sem segredo fraco/gerado em runtime. O valor deve
+  # ter >= 32 caracteres (HS256 exige >= 256 bits) — validado no startup.
+  # NUNCA versionar o secret; injete via ambiente.
+  secret: ${JWT_SECRET:?JWT_SECRET é obrigatória no perfil prod}
+  cookie:
+    # Cookies só via HTTPS em produção (o navegador não persiste cookie Secure em HTTP).
+    secure: true

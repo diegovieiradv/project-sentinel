@@ -19,8 +19,9 @@ export default function LoginPage() {
 
     try {
       await login({ email, password });
-      // Cookie de sessão já gravado pelo backend; volta para a home,
-      // que consulta /api/v1/auth/me para exibir o usuário.
+      // Login guardou o access token em memória (o refresh token ficou no
+      // cookie HttpOnly). Volta para a home, que usa o token para
+      // consultar /api/v1/auth/me e exibir o usuário.
       router.push("/");
     } catch (err) {
       setError(

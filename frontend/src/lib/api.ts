@@ -1,9 +1,14 @@
 /**
  * Minimal API client for Sentinel frontend.
  *
- * Auth (Prompt 02): sessão HTTP por cookie — TODAS as chamadas usam
- * `credentials: "include"` para enviar/receber o JSESSIONID cross-origin
- * (localhost:3000 → localhost:8080, CORS com allowCredentials).
+ * Auth (Prompt 03): access token em memória + refresh token em cookie HttpOnly + CSRF.
+ *
+ * - Access token: guardado em variável de módulo (memória somente). NUNCA em localStorage/sessionStorage/cookie próprio.
+ * - Refresh token: cookie HttpOnly do navegador — o JS nunca o lê nem manipula.
+ * - CSRF: cookie `XSRF-TOKEN` (legível por JS, HttpOnly=false, Path=/). Todo POST/PUT/DELETE/PATCH deve enviar header `X-XSRF-TOKEN`.
+ *   Se o cookie não existir em document.cookie, chama `ensureCsrfToken()` que faz `GET /api/v1/health` para materializá-lo.
+ *   O header `Authorization: Bearer <accessToken>` é injetado pelo `apiFetch` quando houver token.
+ * Todas as chamadas utilizam `credentials: "include"` (padrão do `apiFetch`).
  *
  * Erros da API no shape `{code, message, timestamp, path}` são expostos
  * como `ApiError` (status + code + message legível).
@@ -19,11 +24,7 @@ export interface UserResponse {
   email: string;
 }
 
-export interface AuthResponse {
-  user: UserResponse;
-  tokenType?: string;
-}
-
+/** Inputs */
 export interface RegisterInput {
   name: string;
   email: string;
@@ -43,6 +44,10 @@ interface ApiErrorBody {
   path?: string;
 }
 
+/**
+ * Erro de API — única classe do módulo (os consumidores testam `err instanceof ApiError`).
+ * Uma herança dupla (pai + filha) faria o `throw` da pai falhar nesse teste.
+ */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -57,18 +62,139 @@ export class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(
-  path: string,
-  init: RequestInit = {}
-): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
+/**
+ * Access token em memória — único lugar onde o token "vivo" existe no cliente.
+ * É lido por `apiFetch` (via `getAccessToken()`) e atualizado por `login()`/`refreshSession()`.
+ */
+let accessToken: string | null = null;
+
+/** Obtém o token atual (para o apiFetch injetar no header Authorization). */
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+/** Define o token em memória (chamado por login/refresh após sucesso). */
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+/** Limpa o token em memória (chamado por logout e após refresh 401). */
+export function clearAccessToken(): void {
+  accessToken = null;
+}
+
+/**
+ * Lê `document.cookie` no momento da chamada e devolve o mapa nome→valor.
+ * Sempre reler aqui: `document.cookie` é snapshot da leitura anterior e muda
+ * após cada `Set-Cookie` (ex.: XSRF-TOKEN emitido pelo /health).
+ */
+function readCookieMap(): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  const cookieList = (document.cookie || "").split(";");
+  for (const cookie of cookieList) {
+    const [name, ...valueParts] = cookie.split("=");
+    const trimmedName = name.trim();
+    if (trimmedName) {
+      cookies[trimmedName] = valueParts.join("=");
+    }
+  }
+  return cookies;
+}
+
+/**
+ * Obtém o valor (URL-decodificado) do cookie XSRF-TOKEN — o Spring pode gravá-lo
+ * encoded. Retorna `null` quando o cookie não está presente.
+ */
+function readXsrfToken(): string | null {
+  const raw = readCookieMap()["XSRF-TOKEN"];
+  if (!raw) return null;
+  return decodeURIComponent(raw);
+}
+
+/**
+ * Garante que o cookie XSRF-TOKEN está presente em document.cookie.
+ * Se não estiver, faz GET /api/v1/health (o backend o emite em todas as respostas MVC).
+ * Retorna o valor do token para uso imediato no header X-XSRF-TOKEN.
+ */
+export async function ensureCsrfToken(): Promise<string> {
+  const existing = readXsrfToken();
+  if (existing) {
+    return existing;
+  }
+
+  // Cookie não existe — tenta materializar fazendo uma requisição que o backend
+  // responde com o set-cookie XSRF-TOKEN (todos os endpoints MVC o emitem, inclusive /health).
+  const res = await fetch(`${API_URL}/api/v1/health`, {
     cache: "no-store",
     credentials: "include",
     headers: {
       Accept: "application/json",
-      ...init.headers,
     },
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Could not obtain XSRF-TOKEN: health check failed (HTTP ${res.status})`
+    );
+  }
+
+  // Após o fetch o cookie acabou de ser setado — relê `document.cookie` FRESCO
+  // (o snapshot capturado antes do fetch é anterior ao Set-Cookie e nunca o conteria).
+  const issued = readXsrfToken();
+  if (!issued) {
+    throw new Error("XSRF-TOKEN cookie not found after health check");
+  }
+
+  return issued;
+}
+
+/**
+ * Request padrão: credentials: "include" + Accept JSON.
+ */
+function defaultInit(): RequestInit {
+  return {
+    cache: "no-store",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+    },
+  };
+}
+
+/**
+ * Fetch aprimorado que:
+ * - Injeta `Authorization: Bearer <token>` quando há token em memória.
+ * - Injeta `X-XSRF-TOKEN` em métodos não-safe (POST PUT DELETE PATCH) usando o valor de `document.cookie`.
+ * - Mantém `credentials: "include"` (refresh cookie enviado automaticamente pelo navegador).
+ */
+async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const headers = {
+    ...defaultInit().headers,
+    ...init.headers,
+  } as Record<string, string>;
+
+  // Injeta Authorization Bearer quando há token em memória
+  const token = getAccessToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Injeta X-XSRF-TOKEN para métodos não-safe (POST, PUT, DELETE, PATCH)
+  const method = (init.method || "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    // Garante que o token CSRF está disponível
+    const xsrfToken = await ensureCsrfToken();
+    headers["X-XSRF-TOKEN"] = xsrfToken;
+  }
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...defaultInit(),
+    ...init,
+    headers,
+    cache: "no-store",
   });
 
   if (!res.ok) {
@@ -89,34 +215,7 @@ async function apiFetch<T>(
   return (await res.json()) as T;
 }
 
-/** POST /api/v1/auth/register → {user} (201). */
-export async function register(input: RegisterInput): Promise<{
-  user: UserResponse;
-}> {
-  return apiFetch("/api/v1/auth/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-}
-
-/** POST /api/v1/auth/login → {user, tokenType:"session"} + cookie de sessão. */
-export async function login(input: LoginInput): Promise<AuthResponse> {
-  return apiFetch("/api/v1/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-}
-
-/**
- * GET /api/v1/auth/me → usuário da sessão atual.
- * Sem sessão → lança ApiError com status 401 (não há token no client).
- */
-export async function me(): Promise<UserResponse> {
-  return apiFetch<UserResponse>("/api/v1/auth/me");
-}
-
+/** GET /api/v1/health → status do backend. */
 export async function checkHealth(): Promise<{
   status: "up" | "down" | "unreachable";
   error?: string;
@@ -131,7 +230,7 @@ export async function checkHealth(): Promise<{
 
     if (!res.ok) {
       const errText = await res.text();
-      return { status: "down", error: `HTTP ${res.status}: ${errText || "unreachable" }` };
+      return { status: "down", error: `HTTP ${res.status}: ${errText || "unreachable"}` };
     }
 
     const data = (await res.json()) as {
@@ -159,4 +258,97 @@ export async function checkHealth(): Promise<{
     }
     return { status: "unreachable", error: String(err) };
   }
+}
+
+/** POST /api/v1/auth/register → {user} (201). */
+export async function register(input: RegisterInput): Promise<{
+  user: UserResponse;
+}> {
+  return apiFetch("/api/v1/auth/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+}
+
+/** POST /api/v1/auth/login → {user, accessToken} + cookie refresh HttpOnly. */
+export async function login(input: LoginInput): Promise<{
+  user: UserResponse;
+  accessToken: string;
+}> {
+  const result = await apiFetch<{
+    user: UserResponse;
+    accessToken: string;
+  }>("/api/v1/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  // Sucesso: guarda o access token em memória (o refresh token fica no cookie HttpOnly do navegador)
+  if (result.accessToken) {
+    setAccessToken(result.accessToken);
+  }
+
+  return result;
+}
+
+/**
+ * GET /api/v1/auth/me → usuário da sessão atual.
+ * Usa o access token da memória via header Authorization.
+ * Sem sessão (sem token ou inválido) → lança ApiError status 401.
+ */
+export async function me(): Promise<UserResponse> {
+  return apiFetch<UserResponse>("/api/v1/auth/me");
+}
+
+/**
+ * POST /api/v1/auth/refresh → novo access token usando o refresh token do cookie HttpOnly.
+ * Sucesso → atualiza o token em memória e retorna {user, accessToken}.
+ * 401 (REFRESH_TOKEN_INVALID/EXPIRED/REVOKED) → limpa token e lança erro para o frontend sair da sessão.
+ */
+export async function refreshSession(): Promise<{
+  user: UserResponse;
+  accessToken: string;
+}> {
+  const result = await apiFetch<{
+    user: UserResponse;
+    accessToken: string;
+  }>("/api/v1/auth/refresh", {
+    method: "POST",
+    // Nenhum body necessário; o refresh token é enviado automaticamente via cookie HttpOnly + credentials: "include".
+    // O header X-XSRF-TOKEN é injetado por apiFetch.
+  });
+
+  // Sucesso: rotação do refresh token feita pelo backend; atualiza o access token em memória.
+  if (result.accessToken) {
+    setAccessToken(result.accessToken);
+  }
+
+  return result;
+}
+
+/**
+ * POST /api/v1/auth/logout → logout limpo. Sempre limpa o token em memória
+ * mesmo se a rede falhar (o backend já limpa o cookie refresh do lado dele).
+ */
+export async function logout(): Promise<{
+  message: string;
+}> {
+  try {
+    await apiFetch("/api/v1/auth/logout", {
+      method: "POST",
+    });
+  } catch {
+    // Se a rede falhar, ainda assim limpa o token local para evitar ficar "preso" em estado autenticado.
+  } finally {
+    clearAccessToken();
+  }
+
+  // O backend já limpa o cookie refresh (Max-Age=0). Retornamos o que conseguimos.
+  return { message: "Logged out" };
 }
