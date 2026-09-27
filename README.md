@@ -2,7 +2,7 @@
 
 **Plataforma multi-tenant de observabilidade e gerenciamento de incidentes** — em construção.
 
-> **Aviso: este é o Prompt 05 de 18 — Tenant Security, ownership, IDOR e hardening. Monitoramento, alertas e incidentes NÃO existem ainda.**
+> **Aviso: este é o Prompt 06 de 18 — Projects (primeiro recurso de domínio do tenant). Monitoramento, alertas e incidentes NÃO existem ainda.**
 
 ## Estado atual
 
@@ -11,7 +11,8 @@
 - **Prompt 03 — identity stateless**: access token JWT HS256 (15 min) + refresh token opaco em cookie `HttpOnly` (7 dias) com rotação, revogação e logout, CSRF double-submit, CORS configurável, migrations `V3`.
 - **Prompt 04 — multi-tenancy**: organizações (tenants) e memberships com papéis por organização (`ADMIN` / `OPERATOR` / `VIEWER`), `TenantContext` (ThreadLocal) + `TenantInterceptor` + `@TenantScoped`, regra do último ADMIN (`409 LAST_ADMIN_REQUIRED`) sob lock pessimista (`SELECT ... FOR UPDATE`), isolamento cross-tenant com `404` genérico anti-enumeração, handler global de `405`, migration `V4`. CORS agora também aceita `PATCH` e o header `X-Organization-Id`.
 - **Prompt 05 — tenant security / IDOR / hardening**: autoridade lida **por requisição** no servidor (o mesmo access token reflete promoção/rebaixamento/remoção sem refresh), tentativas cross-tenant (`GET`, `POST`, `PATCH`, `DELETE`) respondendo o `404` genérico anti-enumeração, concorrência do último ADMIN coberta para `PATCH × PATCH`, `PATCH × DELETE` e dois ADMINs em corrida, `400 VALIDATION_ERROR` genérico para corpo malformado e parâmetro de tipo inválido (sem vazar detalhes do parser), validação **fail-fast** das origens CORS no startup (wildcard com `allowCredentials` é erro de boot) e headers de segurança `X-Content-Type-Options: nosniff` + `X-Frame-Options: DENY`. Sem migrations novas.
-- **Ainda NÃO existem**: projetos, serviços monitorados, coleta/monitoramento, alertas, incidentes, dashboards, trilha de auditoria, recuperação de senha, verificação de e-mail nem MFA.
+- **Prompt 06 — projects**: projetos de cada organização em `/api/v1/organizations/{organizationId}/projects` (criar, listar com paginação/filtros/ordenação, detalhar, atualizar e ativar/desativar), pacote `com.sentinel.project`, tabela `projects` (`V5`), unicidade de nome por organização em duas camadas (`409 PROJECT_NAME_DUPLICATE`, inclusive sob concorrência), RBAC sobre `TenantContext.role()` (leitura para qualquer papel, mutação para `ADMIN`/`OPERATOR`), isolamento cross-tenant com `404` genérico e `DELETE` → `405` (a remoção não existe). Contrato em [docs/projects.md](docs/projects.md).
+- **Ainda NÃO existem**: serviços monitorados, coleta/monitoramento, alertas, incidentes, dashboards, trilha de auditoria, recuperação de senha, verificação de e-mail nem MFA.
 
 > O **frontend foi adaptado** a este contrato: access token em memória + header `Authorization: Bearer`, refresh token em cookie `HttpOnly`, CSRF por header `X-XSRF-TOKEN` e bootstrap de sessão via `POST /api/v1/auth/refresh`. No Prompt 04 ele também passou a listar/criar/selecionar organizações e gerenciar membros.
 
@@ -113,7 +114,8 @@ project-sentinel/
 ├── docs/
 │   ├── architecture-foundation.md
 │   ├── identity.md               # contrato de auth do Prompt 03 (stateless)
-│   └── organizations.md          # contrato multi-tenant do Prompt 04
+│   ├── organizations.md          # contrato multi-tenant do Prompt 04
+│   └── projects.md               # contrato de projetos do Prompt 06
 ├── backend/                  # Spring Boot (monólito modular)
 │   ├── pom.xml
 │   └── src/
@@ -125,11 +127,13 @@ project-sentinel/
 │       │   ├── error/        # tratamento global de erros (400, 404, 405, 500)
 │       │   ├── health/       # endpoint técnico de health
 │       │   ├── identity/     # auth (controller/JWT/CSRF) + token/ (refresh) + users
-│       │   └── organization/ # multi-tenancy: context/ (TenantContext), model/
-│       │                     #   (Organization, Membership, Role), dto/, repository/,
-│       │                     #   service/ e web/ (controllers + TenantInterceptor)
-│       ├── main/resources/   # application*.yml + Flyway migrations (V1–V4)
-│       └── test/java/        # testes JUnit 5 + Testcontainers (identity, organization, error, health)
+│       │   ├── organization/ # multi-tenancy: context/ (TenantContext), model/
+│       │   │                 #   (Organization, Membership, Role), dto/, repository/,
+│       │   │                 #   service/ e web/ (controllers + TenantInterceptor)
+│       │   └── project/      # projetos: model/, repository/, dto/, service/ e web/
+│       │                     #   (controller @TenantScoped)
+│       ├── main/resources/   # application*.yml + Flyway migrations (V1–V5)
+│       └── test/java/        # testes JUnit 5 + Testcontainers (identity, organization, project, error, health)
 └── frontend/                 # Next.js — login/register/home + organizações e membros
 ```
 
@@ -151,8 +155,14 @@ project-sentinel/
 | POST | `/api/v1/organizations/{organizationId}/members` | Bearer + **ADMIN** + CSRF | `{email, role}` → `201 MemberResponse` \| `400` \| `403` \| `404` (e-mail não cadastrado) \| `409 MEMBERSHIP_ALREADY_EXISTS` |
 | PATCH | `/api/v1/organizations/{organizationId}/members/{membershipId}` | Bearer + **ADMIN** + CSRF | `{role}` → `200 MemberResponse` \| `409 LAST_ADMIN_REQUIRED` \| `404` membership inexistente/outro tenant |
 | DELETE | `/api/v1/organizations/{organizationId}/members/{membershipId}` | Bearer + **ADMIN** + CSRF | Remove o membro → `204` sem corpo \| `409 LAST_ADMIN_REQUIRED` \| `404` |
+| POST | `/api/v1/organizations/{organizationId}/projects` | Bearer + **ADMIN/OPERATOR** + CSRF | `{name, description?}` → `201 ProjectResponse` \| `400` \| `403` \| `404` \| `409 PROJECT_NAME_DUPLICATE` |
+| GET | `/api/v1/organizations/{organizationId}/projects` | Bearer (qualquer papel) | `200` página `{content, totalElements, totalPages, number, size}` com `page`/`size`/`sort` (`createdAt`\|`name`\|`id`) + filtros `active` e `name` |
+| GET | `/api/v1/organizations/{organizationId}/projects/{projectId}` | Bearer (qualquer papel) | `200 ProjectResponse` (inclui `role` do usuário) \| `404` projeto de outro tenant/inexistente/id malformado |
+| PATCH | `/api/v1/organizations/{organizationId}/projects/{projectId}` | Bearer + **ADMIN/OPERATOR** + CSRF | `{name?, description?}` — parcial (ausente não altera, `""` limpa) → `200` \| `400` \| `409` nome duplicado \| `404` |
+| PATCH | `/api/v1/organizations/{organizationId}/projects/{projectId}/status` | Bearer + **ADMIN/OPERATOR** + CSRF | `{active: boolean}` → `200` (idempotente, sem tocar `updatedAt` se já for o estado) \| `400 active must not be null` \| `404` |
+| DELETE | `/api/v1/organizations/{organizationId}/projects[/{projectId}]` | — | **405** — remoção de projeto não existe neste prompt (soft-delete é o `.../status`) |
 
-Todo método não-safe exige CSRF double-submit: cookie `XSRF-TOKEN` + header `X-XSRF-TOKEN`.
+Todo método não-safe exige CSRF double-submit: cookie `XSRF-TOKEN` + header `X-XSRF-TOKEN`. (Requisições que já trazem `Authorization: Bearer` são isentas do CSRF pelo próprio Spring Security — o bearer não é anexado automaticamente pelo navegador; o double-submit continua obrigatório nas requisições autenticadas por cookie.)
 
 Rotas existentes com método HTTP inválido respondem `405 METHOD_NOT_ALLOWED` no shape padrão de erro.
 
@@ -160,12 +170,12 @@ Corpo JSON malformado, campo com tipo errado ou parâmetro de caminho fora do ti
 
 Todas as respostas do Spring Security trazem `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY`.
 
-Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md) (auth) e [docs/organizations.md](docs/organizations.md) (multi-tenancy).
+Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md) (auth), [docs/organizations.md](docs/organizations.md) (multi-tenancy) e [docs/projects.md](docs/projects.md) (projetos).
 
 ## Documentação de arquitetura
 
-Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, [docs/identity.md](docs/identity.md) para o contrato de autenticação e [docs/organizations.md](docs/organizations.md) para o contrato multi-tenant (organizações, membros e Tenant Context).
+Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, [docs/identity.md](docs/identity.md) para o contrato de autenticação, [docs/organizations.md](docs/organizations.md) para o contrato multi-tenant (organizações, membros e Tenant Context) e [docs/projects.md](docs/projects.md) para o contrato de projetos.
 
 ---
 
-**Prompt 05 de 18 — Tenant Security, ownership, IDOR e hardening.** Monitoramento, alertas e incidentes NÃO existem ainda.
+**Prompt 06 de 18 — Projects (primeiro recurso de domínio do tenant).** Monitoramento, alertas e incidentes NÃO existem ainda.

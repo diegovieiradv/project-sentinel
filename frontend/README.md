@@ -1,9 +1,9 @@
 # Sentinel — Frontend
 
 SPA em **Next.js 16 (App Router)** que consome a API do backend Spring Boot em
-`http://localhost:8080`. Telas: home (sessão + organizações e membros), login e
-register. O backend é sempre a autoridade de autenticação e de tenant — o que
-existe aqui é apenas estado de UI.
+`http://localhost:8080`. Telas: home (sessão + organizações, membros e
+**projetos**), login e register. O backend é sempre a autoridade de
+autenticação e de tenant — o que existe aqui é apenas estado de UI.
 
 **Stack:** Next.js 16.3.6 · React 19 · TypeScript 5 · Tailwind CSS 4 · ESLint 9 · Vitest 3
 
@@ -40,13 +40,23 @@ backend `8080`, PostgreSQL `5433` (docker-compose na raiz do repositório).
 
 Toda a lógica fica em [`src/lib/api.ts`](src/lib/api.ts).
 
+## Projetos (Prompt 06)
+
+Seção de projetos na home, visível apenas com organização selecionada: lista
+paginada (anterior/próxima + total), busca por nome com debounce, filtro de
+status, criação, edição inline (expansão da linha) e ativar/desativar.
+`role = VIEWER` é somente-leitura no cliente (controles mutáveis bloqueados);
+um **403** vira mensagem de erro na UI — nunca logout. Cliente:
+`listProjects`, `createProject`, `getProject`, `updateProject` e
+`updateProjectStatus` em [`src/lib/api.ts`](src/lib/api.ts).
+
 ## Estrutura
 
 ```
 src/
-├── app/            # rotas: page.tsx (home), login/, register/
+├── app/            # rotas: page.tsx (home: sessão, organizações, membros e projetos), login/, register/
 ├── components/     # AuthStatus (sessão), HealthStatus (backend up?)
-└── lib/            # api.ts (cliente) + api.test.ts (vitest)
+└── lib/            # api.ts (cliente) + api.test.ts / projects.test.ts (vitest)
 ```
 
 Documentação do projeto: [README raiz](../README.md) e [docs/](../docs/)

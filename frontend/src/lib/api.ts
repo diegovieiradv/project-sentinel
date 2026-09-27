@@ -51,6 +51,61 @@ export interface MemberResponse {
   createdAt: string;
 }
 
+/** Resposta de projeto do backend (contrato de `ProjectResponse`). */
+export interface ProjectResponse {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Papel do usuário autenticado NA organização dona do projeto. */
+  role: OrganizationRole;
+}
+
+/**
+ * Corpo de criação — APENAS `name`/`description`.
+ * id, organizationId, active e timestamps NUNCA são aceitos no body (o backend
+ * os preenche a partir do path/autenticação).
+ */
+export interface ProjectCreateRequest {
+  name: string;
+  description?: string;
+}
+
+/** Corpo de edição (PATCH) — parcial: campos ausentes permanecem inalterados. */
+export interface ProjectUpdateRequest {
+  name?: string;
+  description?: string;
+}
+
+/** Corpo do PATCH .../status — idempotente. */
+export interface ProjectStatusRequest {
+  active: boolean;
+}
+
+/**
+ * Parâmetros da listagem (Spring Page). `undefined`/string vazia é omitido da
+ * query string; boolean vira `"true"`/`"false"`.
+ */
+export interface ProjectListParams {
+  page?: number;
+  size?: number;
+  active?: boolean;
+  name?: string;
+  sort?: string;
+}
+
+/** Página Spring (`Page<ProjectResponse>`): fatia atual + totais. */
+export interface ProjectPage {
+  content: ProjectResponse[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
 /** Inputs */
 export interface RegisterInput {
   name: string;
@@ -584,6 +639,143 @@ export async function removeMember(
     `/api/v1/organizations/${organizationId}/members/${membershipId}`,
     {
       method: "DELETE",
+    }
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Projetos (Prompt 06)                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Monta a query string da listagem de projetos (helper puro — testável sem rede).
+ *
+ * Regras: `undefined` e string vazia são omitidos (nunca `page=undefined`);
+ * boolean serializa como `"true"`/`"false"`; números entram decimais (`page=0`
+ * inclusive). Ordem fixa: page, size, active, name, sort. Retorna `""` sem params.
+ */
+export function buildProjectListParams(params?: ProjectListParams): string {
+  if (!params) return "";
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.size !== undefined) query.set("size", String(params.size));
+  if (params.active !== undefined) query.set("active", String(params.active));
+  if (params.name) query.set("name", params.name);
+  if (params.sort) query.set("sort", params.sort);
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * Body de projeto com APENAS os campos informados — nunca id/organizationId/
+ * active/timestamps (o backend os ignora/rejeita; a org vem do path).
+ */
+function projectRequestBody(
+  name: string | undefined,
+  description: string | undefined
+): ProjectUpdateRequest {
+  const body: ProjectUpdateRequest = {};
+  if (name !== undefined) body.name = name;
+  if (description !== undefined) body.description = description;
+  return body;
+}
+
+/**
+ * GET /api/v1/organizations/{organizationId}/projects → **200** página Spring.
+ * Query: `page` (default 0), `size` (default 20, máx 100), `sort` (default do
+ * server: `createdAt,asc`), `active=true|false` opcional e `name` (busca
+ * case-insensitive). **403** papel insuficiente | **404** não membro.
+ *
+ * O path já carrega a org, então o `apiFetch` NÃO injeta `X-Organization-Id`
+ * (o `TenantInterceptor` do backend valida o path — mandar header divergente
+ * abriria 404).
+ */
+export async function listProjects(
+  organizationId: string,
+  params?: ProjectListParams
+): Promise<ProjectPage> {
+  return apiFetch<ProjectPage>(
+    `/api/v1/organizations/${organizationId}/projects${buildProjectListParams(params)}`
+  );
+}
+
+/**
+ * POST /api/v1/organizations/{organizationId}/projects → **201** projeto criado.
+ * Body APENAS `{name, description?}`. **400** VALIDATION_ERROR |
+ * **403** papel insuficiente | **409** `PROJECT_NAME_DUPLICATE`.
+ */
+export async function createProject(
+  organizationId: string,
+  request: ProjectCreateRequest
+): Promise<ProjectResponse> {
+  return apiFetch<ProjectResponse>(
+    `/api/v1/organizations/${organizationId}/projects`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        projectRequestBody(request.name, request.description)
+      ),
+    }
+  );
+}
+
+/** GET /api/v1/organizations/{organizationId}/projects/{projectId} → **200** projeto | **404**. */
+export async function getProject(
+  organizationId: string,
+  projectId: string
+): Promise<ProjectResponse> {
+  return apiFetch<ProjectResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}`
+  );
+}
+
+/**
+ * PATCH /api/v1/organizations/{organizationId}/projects/{projectId} → **200** projeto atualizado.
+ * Body parcial: só o que for informado é alterado.
+ * **400** VALIDATION_ERROR | **403** papel insuficiente | **404** inexistente |
+ * **409** `PROJECT_NAME_DUPLICATE`.
+ */
+export async function updateProject(
+  organizationId: string,
+  projectId: string,
+  request: ProjectUpdateRequest
+): Promise<ProjectResponse> {
+  return apiFetch<ProjectResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        projectRequestBody(request.name, request.description)
+      ),
+    }
+  );
+}
+
+/**
+ * PATCH /api/v1/organizations/{organizationId}/projects/{projectId}/status →
+ * **200** projeto com o novo estado (idempotente).
+ * **403** papel insuficiente | **404** inexistente.
+ */
+export async function updateProjectStatus(
+  organizationId: string,
+  projectId: string,
+  active: boolean
+): Promise<ProjectResponse> {
+  const body: ProjectStatusRequest = { active };
+  return apiFetch<ProjectResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     }
   );
 }

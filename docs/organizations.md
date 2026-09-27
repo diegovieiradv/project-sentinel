@@ -1,6 +1,6 @@
 # Organizations (multi-tenancy) — Sentinel
 
-> **Prompt 04 de 18** (escopo de multi-tenancy), **endurecido no Prompt 05** (Tenant Security, ownership, IDOR e hardening). Este documento descreve **o que está construído**: organizações (tenants), memberships com papéis por organização (`ADMIN` / `OPERATOR` / `VIEWER`), resolução de contexto de tenant (`TenantContext` + `TenantInterceptor` + `@TenantScoped`), regra do último ADMIN, isolamento cross-tenant e as garantias de segurança do Prompt 05 (autoridade por requisição, ataques IDOR adversariais, concorrência do último ADMIN, corpo/parâmetro inválidos e CORS fail-fast). A base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
+> **Prompt 04 de 18** (escopo de multi-tenancy), **endurecido no Prompt 05** (Tenant Security, ownership, IDOR e hardening). Este documento descreve **o que está construído**: organizações (tenants), memberships com papéis por organização (`ADMIN` / `OPERATOR` / `VIEWER`), resolução de contexto de tenant (`TenantContext` + `TenantInterceptor` + `@TenantScoped`), regra do último ADMIN, isolamento cross-tenant e as garantias de segurança do Prompt 05 (autoridade por requisição, ataques IDOR adversariais, concorrência do último ADMIN, corpo/parâmetro inválidos e CORS fail-fast). A base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md). O primeiro recurso de domínio que **herda esse contexto de tenant** — projetos — está no [projects.md](projects.md) (Prompt 06).
 
 ## 1. Escopo implementado
 
@@ -22,7 +22,8 @@
 | Corpo JSON malformado / parâmetro de tipo inválido → `400` genérico (nunca `500`) | Construído no **Prompt 05** |
 | Origens CORS validadas no startup (fail-fast) + headers `nosniff` / `X-Frame-Options: DENY` | Construído no **Prompt 05** |
 | Frontend: listar/criar/selecionar organização + gerenciar membros | Construído |
-| Vinculação de projetos/serviços/monitoramento à organização | **Fora do escopo** (prompts futuros) |
+| Vinculação de **projetos** à organização (primeiro recurso de domínio, Prompt 06) | Construído — contrato em [projects.md](projects.md) |
+| Vinculação de serviços/monitoramento à organização | **Fora do escopo** (prompts futuros) |
 
 ## 2. Modelo de dados
 
@@ -371,7 +372,7 @@ com.sentinel
 
 ## 10. Testes
 
-- `mvn test` — **135 testes, 0 falhas, exit 0** (execução confirmada no Prompt 05; eram 100 no fim do Prompt 04).
+- `mvn test` — **135 testes, 0 falhas, exit 0** (execução confirmada no Prompt 05; eram 100 no fim do Prompt 04). *Desde o Prompt 06 a suíte completa está em **188 testes, 0 falhas** — os 135 de aqui em cima + os 53 de [projects.md](projects.md).*
 - **Classes novas no Prompt 05** (todas herdam `AbstractTenantIntegrationTest`):
   - `StaleAuthorizationTest` (2): o **mesmo** access token vendo promoção (`OPERATOR → ADMIN`), rebaixamento (`ADMIN → VIEWER`, nos quatro endpoints) e remoção (404 genérico + sumiço da listagem) — sem nenhum refresh no meio.
   - `IdorAdversarialTest` (6): cenário Alpha/Beta/Charlie com leituras escopadas, os quatro endpoints sob não-membro → `404` sem escrita, autoridade por tenant (o mesmo usuário é `ADMIN` numa org e `OPERATOR` noutra), membershipId de outro tenant/aleatório → `404` intacto e path × header divergente nas rotas de membros.
@@ -383,12 +384,12 @@ com.sentinel
   - `MembershipIntegrationTest` (30, era 24): adicionar (`201`, `404` e-mail desconhecido, `400` role inválido/em branco, `409` duplicado), listar (admin vê tudo sem hashes; `403` para `VIEWER`; `401`; `404` para não-membro), trocar papel (`200`, `400`, `404` cross-tenant, `409 LAST_ADMIN_REQUIRED`), remover (`204`, `409`, `404` id malformado), `403` para `OPERATOR` nas quatro rotas e para `VIEWER` nas de escrita, `200` ao rebaixar um segundo ADMIN, cross-tenant → `404` e **dois testes de concorrência** (delete duplo serializado; delete do último ADMIN) — **+6** de `role` com caixa baixa/mista normalizado no `POST` e no `PATCH`, `role: ""` → `400` `"must not be blank"` e `organizationId`/`membershipId` malformados → `404` (nunca `500`).
   - `MultiTenantScenarioTest` (8, inalterado): `ProbeController` `@TenantScoped` sem id no path (`400 TENANT_REQUIRED`), `401` antes da resolução, `404` idêntico para org desconhecida × estrangeira, header malformado, path × header divergente e limpeza do `ThreadLocal` após sucesso **e** após falha — é a base sequencial que `TenantContextIsolationTest` complementa com concorrência.
   - `AuthIntegrationTest` 32 → **35** (corpo malformado e tipo errado no `POST /register` → `400` sem detalhe do parser; headers `nosniff` e `X-Frame-Options: DENY`) e `GlobalExceptionHandlerTest` 6 → **8** (corpo malformado e `MethodArgumentTypeMismatchException` → `400` sem vazar parser/conversão).
-- Todas as classes `@SpringBootTest` seguem com contexto próprio por `PostgreSQLContainer` (Testcontainers); as de organização herdam os helpers de `AbstractTenantIntegrationTest` (CSRF **real** via cookie/header — nenhum teste usa `.with(csrf())`). Os testes de concorrência usam `CountDownLatch` + `ExecutorService` de 2 threads com `csrf()` aquecido antes das threads.
+- Todas as classes `@SpringBootTest` seguem com contexto próprio por `PostgreSQLContainer` (Testcontainers); as de organização herdam os helpers de `AbstractTenantIntegrationTest` (CSRF **real** via cookie/header — nenhum teste usa `.with(csrf())`). Os testes de concorrência usam `CountDownLatch` + `ExecutorService` de 2 threads com `csrf()` aquecido antes das threads. (No Prompt 06 a base ficou `public abstract` para ser estendida também pelos testes de projeto — nenhuma classe de teste antiga mudou de comportamento.)
 - Frontend: `npm run lint && npm run type-check && npm run build` — exit 0 (execução no Prompt 04; fora do escopo do Prompt 05).
 
 ## 11. Fora do escopo (prompts futuros)
 
-- Vincular recursos de domínio (projetos, serviços, monitors, alertas, incidentes) à organização usando o `TenantContext` já resolvido.
+- Vincular os demais recursos de domínio (serviços, monitors, alertas, incidentes) à organização usando o `TenantContext` já resolvido — **projetos já usam esse contexto no Prompt 06** ([projects.md](projects.md)).
 - Troca de organização com reautenticação/escopo de token (hoje o papel vem do banco por requisição, não do JWT).
 - Trilha de auditoria de ações por tenant.
 - Rotinas de manutenção de memberships: hoje eles só saem pela API (ou via `ON DELETE CASCADE` ao excluir usuário/organização) — não há expurgo ou reconciliação programada.

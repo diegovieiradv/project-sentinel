@@ -22,7 +22,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Base compartilhada dos testes de organização (Prompt 04).
+ * Base compartilhada dos testes de organização (Prompt 04) — também estendida
+ * pelos testes de projeto (Prompt 06), daí {@code public}.
  *
  * <p>Sem anotações Spring e SEM ciclo de vida: cada subclasse declara o seu
  * próprio {@code @SpringBootTest}/{@ServiceConnection}/container (mesmo padrão
@@ -34,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
  * teste precisa ver o contrato do frontend — GET materializa o cookie
  * {@code XSRF-TOKEN}, demais métodos ecoam o valor em {@code X-XSRF-TOKEN}.</p>
  */
-abstract class AbstractTenantIntegrationTest {
+public abstract class AbstractTenantIntegrationTest {
 
     static final String CSRF_COOKIE = "XSRF-TOKEN";
     static final String CSRF_HEADER = "X-XSRF-TOKEN";
