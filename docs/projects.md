@@ -1,6 +1,6 @@
 # Projects — Sentinel
 
-> **Prompt 06 de 18** — primeiro recurso de domínio do tenant: projetos de uma organização. Este documento descreve **o que está construído**: tabela `projects` (`V5`), módulo `com.sentinel.project` (entidade, repositório, DTOs, service e controller), paginação/filtros/ordenação, unicidade de nome por organização em duas camadas, ativação/desativação idempotente e a matriz de autorização sobre o contexto de tenant já resolvido. O contexto de tenant (membership, papéis e `404` anti-enumeração) é o do [organizations.md](organizations.md); a base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
+> **Prompt 06 de 18** — primeiro recurso de domínio do tenant: projetos de uma organização. Este documento descreve **o que está construído**: tabela `projects` (`V5`), módulo `com.sentinel.project` (entidade, repositório, DTOs, service e controller), paginação/filtros/ordenação, unicidade de nome por organização em duas camadas, ativação/desativação idempotente e a matriz de autorização sobre o contexto de tenant já resolvido. O contexto de tenant (membership, papéis e `404` anti-enumeração) é o do [organizations.md](organizations.md); a base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md). O sub-recurso de serviços vinculado ao projeto entrou no **Prompt 07** — ver [services.md](services.md).
 
 ## 1. Escopo implementado
 
@@ -18,7 +18,8 @@
 | RBAC: leitura para qualquer papel, mutação para `ADMIN`/`OPERATOR` | Construído |
 | Validações de entrada sem `500` (nome, descrição, paginação, `sort`, id malformado, corpo malformado) | Construído |
 | `DELETE` da rota → `405` (remoção não existe neste prompt) | Construído |
-| Serviços, monitors, alertas e incidentes | **Fora do escopo** (prompts futuros) |
+| Serviços do projeto | ✅ **Construído no Prompt 07** ([services.md](services.md)) — este prompt não os implementa; a rota nasce como sub-recurso em `.../projects/{projectId}/services` |
+| Coleta de dados de saúde, alertas e incidentes | **Fora do escopo** (prompts futuros) |
 
 ## 2. Modelo de dados
 
@@ -235,7 +236,7 @@ com.sentinel
 
 ## 9. Testes
 
-- `mvn test` — **188 testes, 0 falhas, exit 0** (135 do Prompt 05 + **53** novos); `mvn -DskipTests package` — exit 0.
+- `mvn test` — **188 testes, 0 falhas, exit 0** no fechamento deste prompt (135 do Prompt 05 + **53** novos; hoje são **257** com os 69 do Prompt 07); `mvn -DskipTests package` — exit 0.
 - **Novas classes** (todas herdam `AbstractProjectIntegrationTest` → `AbstractTenantIntegrationTest`, contexto próprio por `PostgreSQLContainer`):
   - `ProjectIntegrationTest` (35): contrato do `201` (sem campos internos, `nameNormalized` fora do payload), trim, validações (`400` com mensagem exata para nome/descrição/paginação/`sort`), `401`, unicidade nas duas camadas (duplicata, duplicata com caixa/espaços circundantes, duplicata de projeto desativado, mesmo nome em orgs diferentes), `404` (inexistente/malformado/outro tenant), listagem (shape estável, paginação, filtros `active`/`name`, ordenação, escopo do tenant), `PATCH` (rename com novo `nameNormalized`, campos ausentes, limpar descrição, `400`, `409`, rename para o próprio nome idempotente, cross-tenant, `401`) e `405` de `DELETE`/`PUT`.
   - `ProjectIdorAdversarialTest` (9): cenário Alpha/Beta/Charlie — não-membro `404` em tudo sem escrita, projeto de outro tenant `404`, `VIEWER` lê mas recebe `403` em toda mutação, `OPERATOR` pode mutar, `401` sem token, CSRF (`403` sem Bearer × isenção com Bearer), path × header divergente e `organizationId`/`projectId` malformados.
@@ -245,7 +246,7 @@ com.sentinel
 
 ## 10. Fora do escopo (prompts futuros)
 
-- Serviços/monitors vinculados a projeto, coleta, alertas, incidentes e dashboards.
+- Coleta de dados de saúde dos serviços, regras de alerta, incidentes e dashboards. (O **cadastro** dos serviços vinculados ao projeto entrou no Prompt 07 — ver [services.md](services.md).)
 - Remoção definitiva de projeto (hoje a rota `DELETE` devolve `405`; o soft-delete é o `.../status`).
 - Trilha de auditoria de criação/edição/desativação por tenant.
 - Índices de busca textual além da subcadeia sobre `name_normalized` (ex.: `pg_trgm`) — só se houver requisito real de busca.

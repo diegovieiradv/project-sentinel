@@ -106,6 +106,73 @@ export interface ProjectPage {
   size: number;
 }
 
+/** Status operacional de um serviço — espelha o enum `ServiceStatus` do backend. */
+export type ServiceStatus = "OPERATIONAL" | "DEGRADED" | "UNAVAILABLE" | "UNKNOWN";
+
+/** Resposta de serviço do backend (contrato de `ServiceResponse`). */
+export interface ServiceResponse {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+  /** Status operacional REAL vindo da API — o cliente nunca o simula. */
+  status: ServiceStatus;
+  createdAt: string;
+  updatedAt: string;
+  /** Papel do usuário autenticado NA organização dona do serviço. */
+  role: OrganizationRole;
+}
+
+/**
+ * Corpo de criação — APENAS `name`/`description`.
+ * id, organizationId, projectId, active, status e timestamps NUNCA entram no
+ * body (o backend os preenche a partir do path/autenticação).
+ */
+export interface ServiceCreateRequest {
+  name: string;
+  description?: string;
+}
+
+/** Corpo de edição (PATCH) — parcial: campos ausentes permanecem inalterados. */
+export interface ServiceUpdateRequest {
+  name?: string;
+  description?: string;
+}
+
+/**
+ * Corpo do PATCH `.../services/{serviceId}/activation` — idempotente.
+ * `active` é o ciclo de vida do cadastro, NÃO o `status` operacional
+ * (por isso o endpoint se chama `activation`).
+ */
+export interface ServiceActivationRequest {
+  active: boolean;
+}
+
+/**
+ * Parâmetros da listagem de serviços (Spring Page). `undefined`/string vazia é
+ * omitido da query string; boolean vira `"true"`/`"false"`; `status` filtra o
+ * status operacional (`active` é o filtro de ciclo de vida — coisas distintas).
+ */
+export interface ServiceListParams {
+  page?: number;
+  size?: number;
+  active?: boolean;
+  status?: ServiceStatus;
+  name?: string;
+  sort?: string;
+}
+
+/** Página Spring (`Page<ServiceResponse>`): fatia atual + totais. */
+export interface ServicePage {
+  content: ServiceResponse[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
 /** Inputs */
 export interface RegisterInput {
   name: string;
@@ -770,6 +837,156 @@ export async function updateProjectStatus(
   const body: ProjectStatusRequest = { active };
   return apiFetch<ProjectResponse>(
     `/api/v1/organizations/${organizationId}/projects/${projectId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Serviços (Prompt 07)                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Monta a query string da listagem de serviços (helper puro — testável sem rede).
+ *
+ * Regras: `undefined` e string vazia são omitidos (nunca `page=undefined`);
+ * boolean serializa como `"true"`/`"false"`; números entram decimais (`page=0`
+ * inclusive). Ordem fixa: page, size, active, status, name, sort. Retorna `""`
+ * sem params.
+ */
+export function buildServiceListParams(params?: ServiceListParams): string {
+  if (!params) return "";
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.size !== undefined) query.set("size", String(params.size));
+  if (params.active !== undefined) query.set("active", String(params.active));
+  if (params.status) query.set("status", params.status);
+  if (params.name) query.set("name", params.name);
+  if (params.sort) query.set("sort", params.sort);
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * Body de serviço com APENAS os campos informados — nunca ids, organizationId,
+ * projectId, active, status ou timestamps (a org/projeto vêm do path).
+ */
+function serviceRequestBody(
+  name: string | undefined,
+  description: string | undefined
+): ServiceUpdateRequest {
+  const body: ServiceUpdateRequest = {};
+  if (name !== undefined) body.name = name;
+  if (description !== undefined) body.description = description;
+  return body;
+}
+
+/**
+ * GET /api/v1/organizations/{organizationId}/projects/{projectId}/services →
+ * **200** página Spring. Query: `page` (default 0), `size` (default 20, máx 100),
+ * `sort` (default do server: `createdAt,asc`), `active=true|false`,
+ * `status=OPERATIONAL|DEGRADED|UNAVAILABLE|UNKNOWN` e `name` (busca).
+ * **403** papel insuficiente | **404** projeto/org inexistente.
+ *
+ * O path já carrega a org, então o `apiFetch` NÃO injeta `X-Organization-Id`
+ * (o `TenantInterceptor` do backend valida o path — mandar header divergente
+ * abriria 404). Leitura funciona mesmo com o projeto inativo.
+ */
+export async function listServices(
+  organizationId: string,
+  projectId: string,
+  params?: ServiceListParams
+): Promise<ServicePage> {
+  return apiFetch<ServicePage>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services${buildServiceListParams(params)}`
+  );
+}
+
+/**
+ * POST /api/v1/organizations/{organizationId}/projects/{projectId}/services →
+ * **201** serviço criado. Body APENAS `{name, description?}`.
+ * **400** VALIDATION_ERROR | **403** papel insuficiente | **404** projeto/org |
+ * **409** `SERVICE_NAME_DUPLICATE` ou `PROJECT_INACTIVE` (projeto inativo).
+ */
+export async function createService(
+  organizationId: string,
+  projectId: string,
+  request: ServiceCreateRequest
+): Promise<ServiceResponse> {
+  return apiFetch<ServiceResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        serviceRequestBody(request.name, request.description)
+      ),
+    }
+  );
+}
+
+/**
+ * GET /api/v1/organizations/{organizationId}/projects/{projectId}/services/{serviceId}
+ * → **200** serviço | **404** inexistente/outro tenant.
+ */
+export async function getService(
+  organizationId: string,
+  projectId: string,
+  serviceId: string
+): Promise<ServiceResponse> {
+  return apiFetch<ServiceResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}`
+  );
+}
+
+/**
+ * PATCH /api/v1/organizations/{organizationId}/projects/{projectId}/services/{serviceId}
+ * → **200** serviço atualizado. Body parcial: só o que for informado muda.
+ * **400** VALIDATION_ERROR | **403** papel insuficiente | **404** inexistente |
+ * **409** `SERVICE_NAME_DUPLICATE` ou `PROJECT_INACTIVE`.
+ */
+export async function updateService(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  request: ServiceUpdateRequest
+): Promise<ServiceResponse> {
+  return apiFetch<ServiceResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        serviceRequestBody(request.name, request.description)
+      ),
+    }
+  );
+}
+
+/**
+ * PATCH /api/v1/organizations/{organizationId}/projects/{projectId}/services/{serviceId}/activation
+ * → **200** serviço com o novo `active` (idempotente) — NÃO mexe no `status`
+ * operacional. **403** papel insuficiente | **404** inexistente |
+ * **409** `PROJECT_INACTIVE` (projeto inativo não admite mutação).
+ */
+export async function activateService(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  active: boolean
+): Promise<ServiceResponse> {
+  const body: ServiceActivationRequest = { active };
+  return apiFetch<ServiceResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/activation`,
     {
       method: "PATCH",
       headers: {

@@ -4,6 +4,8 @@
 import { FormEvent, Fragment, useCallback, useEffect, useState } from "react";
 import HealthStatus from "@/components/HealthStatus";
 import AuthStatus, { type AuthStateKind } from "@/components/AuthStatus";
+import ServicesPanel from "@/components/ServicesPanel";
+import { handleUnauthorized, isUnauthorized, messageOf } from "@/lib/errors";
 import {
   listOrganizations,
   createOrganization,
@@ -18,7 +20,6 @@ import {
   setOrganizationId,
   getOrganizationId,
   clearOrganizationId,
-  clearAccessToken,
   ApiError,
   type OrganizationResponse,
   type MemberResponse,
@@ -33,28 +34,6 @@ const ROLE_OPTIONS: OrganizationRole[] = ["ADMIN", "OPERATOR", "VIEWER"];
 type OrgsStatus = "loading" | "ready" | "error";
 type MembersStatus = "idle" | "loading" | "ready" | "error";
 type ProjectsStatus = "idle" | "loading" | "ready" | "error";
-
-/** Mensagem legível de qualquer erro capturado. */
-function messageOf(err: unknown, fallback: string): string {
-  if (err instanceof ApiError || err instanceof Error) {
-    return err.message;
-  }
-  return fallback;
-}
-
-/**
- * 401 em qualquer chamada → limpa a sessão local.
- * O próprio `apiFetch` já dispara `SESSION_EXPIRED_EVENT`, que leva o `AuthStatus`
- * a assumir estado anônimo (e a home desmonta a seção de organizações).
- */
-function handleUnauthorized(): void {
-  clearAccessToken();
-  clearOrganizationId();
-}
-
-function isUnauthorized(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 401;
-}
 
 /**
  * Membros da organização ativa.
@@ -839,6 +818,10 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                               </p>
                             )}
                           </div>
+
+                          {/* Serviços do projeto expandido (Prompt 07) —
+                              monta/desmonta com o projeto (`key={project.id}`). */}
+                          <ServicesPanel key={project.id} project={project} />
                         </td>
                       </tr>
                     )}
