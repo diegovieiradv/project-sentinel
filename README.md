@@ -2,7 +2,7 @@
 
 **Plataforma multi-tenant de observabilidade e gerenciamento de incidentes** — em construção.
 
-> **Aviso: este é o Prompt 04 de 18 — multi-tenancy (organizações + membros). Monitoramento, alertas e incidentes NÃO existem ainda.**
+> **Aviso: este é o Prompt 05 de 18 — Tenant Security, ownership, IDOR e hardening. Monitoramento, alertas e incidentes NÃO existem ainda.**
 
 ## Estado atual
 
@@ -10,6 +10,7 @@
 - **Prompt 02 — identity**: usuários (`users`), cadastro/login por sessão HTTP (`JSESSIONID`), `GET /api/v1/auth/me`, BCrypt, páginas de login/register no frontend.
 - **Prompt 03 — identity stateless**: access token JWT HS256 (15 min) + refresh token opaco em cookie `HttpOnly` (7 dias) com rotação, revogação e logout, CSRF double-submit, CORS configurável, migrations `V3`.
 - **Prompt 04 — multi-tenancy**: organizações (tenants) e memberships com papéis por organização (`ADMIN` / `OPERATOR` / `VIEWER`), `TenantContext` (ThreadLocal) + `TenantInterceptor` + `@TenantScoped`, regra do último ADMIN (`409 LAST_ADMIN_REQUIRED`) sob lock pessimista (`SELECT ... FOR UPDATE`), isolamento cross-tenant com `404` genérico anti-enumeração, handler global de `405`, migration `V4`. CORS agora também aceita `PATCH` e o header `X-Organization-Id`.
+- **Prompt 05 — tenant security / IDOR / hardening**: autoridade lida **por requisição** no servidor (o mesmo access token reflete promoção/rebaixamento/remoção sem refresh), tentativas cross-tenant (`GET`, `POST`, `PATCH`, `DELETE`) respondendo o `404` genérico anti-enumeração, concorrência do último ADMIN coberta para `PATCH × PATCH`, `PATCH × DELETE` e dois ADMINs em corrida, `400 VALIDATION_ERROR` genérico para corpo malformado e parâmetro de tipo inválido (sem vazar detalhes do parser), validação **fail-fast** das origens CORS no startup (wildcard com `allowCredentials` é erro de boot) e headers de segurança `X-Content-Type-Options: nosniff` + `X-Frame-Options: DENY`. Sem migrations novas.
 - **Ainda NÃO existem**: projetos, serviços monitorados, coleta/monitoramento, alertas, incidentes, dashboards, trilha de auditoria, recuperação de senha, verificação de e-mail nem MFA.
 
 > O **frontend foi adaptado** a este contrato: access token em memória + header `Authorization: Bearer`, refresh token em cookie `HttpOnly`, CSRF por header `X-XSRF-TOKEN` e bootstrap de sessão via `POST /api/v1/auth/refresh`. No Prompt 04 ele também passou a listar/criar/selecionar organizações e gerenciar membros.
@@ -50,6 +51,8 @@ Variáveis principais:
 
 | Variável | Default | Descrição |
 | --- | --- | --- |
+| `DATABASE_URL` | `jdbc:postgresql://localhost:5433/sentinel` | JDBC URL do PostgreSQL (opcional) |
+| `DATABASE_USERNAME` | `sentinel` | Usuário do PostgreSQL (opcional) |
 | `DATABASE_PASSWORD` | `sentinel` | Senha do PostgreSQL no Docker Compose; **obrigatória (sem default) no perfil `prod`** |
 | `SERVER_PORT` | `8080` | Porta do backend |
 | `SPRING_PROFILES_ACTIVE` | `dev` | Perfil Spring (`dev`, `test`, `prod`) |
@@ -119,7 +122,7 @@ project-sentinel/
 │       │   ├── JwtProperties.java / JwtConfiguration.java   # config JWT
 │       │   ├── SecurityConfig.java  # filter chain, CSRF, CORS, converter
 │       │   ├── config/       # async
-│       │   ├── error/        # tratamento global de erros (404, 405, 500)
+│       │   ├── error/        # tratamento global de erros (400, 404, 405, 500)
 │       │   ├── health/       # endpoint técnico de health
 │       │   ├── identity/     # auth (controller/JWT/CSRF) + token/ (refresh) + users
 │       │   └── organization/ # multi-tenancy: context/ (TenantContext), model/
@@ -153,6 +156,10 @@ Todo método não-safe exige CSRF double-submit: cookie `XSRF-TOKEN` + header `X
 
 Rotas existentes com método HTTP inválido respondem `405 METHOD_NOT_ALLOWED` no shape padrão de erro.
 
+Corpo JSON malformado, campo com tipo errado ou parâmetro de caminho fora do tipo respondem `400 VALIDATION_ERROR` (ou `404` nos ids de tenant, conforme a política anti-enumeração) com mensagem genérica — os detalhes do parser/conversão ficam no servidor.
+
+Todas as respostas do Spring Security trazem `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY`.
+
 Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md) (auth) e [docs/organizations.md](docs/organizations.md) (multi-tenancy).
 
 ## Documentação de arquitetura
@@ -161,4 +168,4 @@ Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para deci
 
 ---
 
-**Prompt 04 de 18 — multi-tenancy (organizações + membros).** Monitoramento, alertas e incidentes NÃO existem ainda.
+**Prompt 05 de 18 — Tenant Security, ownership, IDOR e hardening.** Monitoramento, alertas e incidentes NÃO existem ainda.

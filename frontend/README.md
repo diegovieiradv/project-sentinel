@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sentinel — Frontend
 
-## Getting Started
+SPA em **Next.js 16 (App Router)** que consome a API do backend Spring Boot em
+`http://localhost:8080`. Telas: home (sessão + organizações e membros), login e
+register. O backend é sempre a autoridade de autenticação e de tenant — o que
+existe aqui é apenas estado de UI.
 
-First, run the development server:
+**Stack:** Next.js 16.3.6 · React 19 · TypeScript 5 · Tailwind CSS 4 · ESLint 9 · Vitest 3
+
+## Scripts
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install       # dependências
+npm run dev       # dev server em http://localhost:3000
+npm run lint      # eslint
+npm run type-check# tsc --noEmit
+npm run build     # build de produção
+npm run start     # serve o build de produção
+npm test          # vitest run — testes unitários de src/lib (environment node)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Configuração
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variável              | Default                 | Descrição                       |
+| --------------------- | ----------------------- | ------------------------------- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Base URL da API do backend       |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copie `.env.example` para `.env.local` para sobrescrever. Portas: frontend `3000`,
+backend `8080`, PostgreSQL `5433` (docker-compose na raiz do repositório).
 
-## Learn More
+## Autenticação (resumo)
 
-To learn more about Next.js, take a look at the following resources:
+- **Access token:** em memória (variável de módulo) — nunca em `localStorage`/`sessionStorage`.
+- **Refresh token:** cookie **HttpOnly** emitido e rotacionado pelo backend; o JS não o lê.
+- **CSRF:** cookie `XSRF-TOKEN` (legível por JS) reenviado no header `X-XSRF-TOKEN` em POST/PUT/PATCH/DELETE.
+- **401** em qualquer chamada dispara `SESSION_EXPIRED_EVENT` → limpa token e organização ativa; **403** não.
+- **Organização ativa:** UUID em memória + `localStorage` (`sentinel.activeOrganizationId`) — é
+  preferência de UI, sempre validada contra a lista de orgs do usuário e com formato UUID conferido.
+  O backend continua sendo quem decide membership/tenant.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Toda a lógica fica em [`src/lib/api.ts`](src/lib/api.ts).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Estrutura
 
-## Deploy on Vercel
+```
+src/
+├── app/            # rotas: page.tsx (home), login/, register/
+├── components/     # AuthStatus (sessão), HealthStatus (backend up?)
+└── lib/            # api.ts (cliente) + api.test.ts (vitest)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Documentação do projeto: [README raiz](../README.md) e [docs/](../docs/)
+(`identity.md` = contrato de auth, `organizations.md` = contrato multi-tenant).

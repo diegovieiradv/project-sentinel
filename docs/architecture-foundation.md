@@ -1,6 +1,6 @@
 # Fundação da arquitetura — Sentinel
 
-> Prompt 01 de 18 (atualizado nos **Prompt 02 — Identity**, **Prompt 03 — Identity stateless** e **Prompt 04 — Multi-tenancy**). Este documento descreve **decisões e fronteiras planejadas**; apenas o que estiver indicado como "construído" existe hoje no código.
+> Prompt 01 de 18 (atualizado nos **Prompt 02 — Identity**, **Prompt 03 — Identity stateless**, **Prompt 04 — Multi-tenancy** e **Prompt 05 — Tenant Security**). Este documento descreve **decisões e fronteiras planejadas**; apenas o que estiver indicado como "construído" existe hoje no código.
 
 ## 1. Decisões arquiteturais
 
@@ -38,13 +38,14 @@ O que existe hoje no backend:
 
 - `GET /api/v1/health` — health técnico do serviço (também materializa o cookie `XSRF-TOKEN`).
 - `GET /actuator/health` — health do Actuator (sem detalhes).
-- Tratamento global de erros com shape `{code, message, timestamp, path}` (+ 404 padronizado para rota desconhecida; **405** para método não permitido em rota existente, Prompt 04).
+- Tratamento global de erros com shape `{code, message, timestamp, path}` (+ 404 padronizado para rota desconhecida; **405** para método não permitido em rota existente, Prompt 04; **400** genérico para corpo malformado e parâmetro de tipo inválido, Prompt 05).
 - **Prompt 02**: `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me` — BCrypt, tabela `users` (`V2`).
 - **Prompt 03**: autenticação *stateless* — access token JWT HS256 (15 min, claims `sub`/`iat`/`exp`) validado pelo `oauth2ResourceServer`, refresh token opaco em cookie `HttpOnly + SameSite=Strict + Path=/api/v1/auth` (7 dias, só o SHA-256 persistido) com rotação atômica, revogação em caso de reuso e logout idempotente; CSRF double-submit (`XSRF-TOKEN`/`X-XSRF-TOKEN`); tabela `refresh_tokens` (`V3`).
 - **Prompt 04**: multi-tenancy — `POST`/`GET /api/v1/organizations`, `GET /api/v1/organizations/{organizationId}` e gestão de membros em `/api/v1/organizations/{organizationId}/members` (`GET`/`POST`/`PATCH`/`DELETE`); `TenantContext` (ThreadLocal) populado pelo `TenantInterceptor` em handlers `@TenantScoped` (path `organizationId` ou header `X-Organization-Id`) e sempre limpo no fim da requisição; papéis `ADMIN`/`OPERATOR`/`VIEWER`, regra do último ADMIN sob lock pessimista, isolamento cross-tenant com 404 genérico; tabelas `organizations` e `memberships` (`V4`).
-- CORS liberado para `http://localhost:3000` com credenciais — **fonte única**: `SecurityConfig.corsConfigurationSource`, origens configuráveis via `app.cors.allowed-origins` (o antigo `WebMvcConfig` foi removido no Prompt 02); desde o Prompt 04 os métodos incluem `PATCH` e os headers incluem `X-Organization-Id`.
+- **Prompt 05**: tenant security sem mudança de contrato — a autoridade é consultada no servidor **por requisição** (papel nunca em JWT: promoção/rebaixamento/remoção valem sem refresh), a matriz de ataques IDOR (`GET`/`POST`/`PATCH`/`DELETE` cross-tenant, `membershipId` de outro tenant ou aleatório, path × header divergente) responde o mesmo `404` genérico sem efeito colateral, a regra do último ADMIN é coberta sob concorrência (`PATCH × PATCH`, `PATCH × DELETE` e dois ADMINs em corrida), corpo/parâmetro inválido vira `400` genérico, origens CORS são validadas no startup e os headers de segurança padrão ficam verificados. **Sem migrations novas.**
+- CORS liberado para `http://localhost:3000` com credenciais — **fonte única**: `SecurityConfig.corsConfigurationSource`, origens configuráveis via `app.cors.allowed-origins` (o antigo `WebMvcConfig` foi removido no Prompt 02); desde o Prompt 04 os métodos incluem `PATCH` e os headers incluem `X-Organization-Id`; desde o **Prompt 05** a lista é **validada no startup** (curinga com `allowCredentials=true` derruba a subida) e as respostas trazem `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY` (defaults do Spring Security).
 - Bean assíncrono (`taskExecutor`) como base futura de processamento assíncrono.
-- Flyway: `V1__init_schema.sql` (fundação) + `V2__create_users_table.sql` (identity) + `V3__create_refresh_tokens_table.sql` (refresh tokens) + `V4__create_organizations_and_memberships.sql` (multi-tenancy).
+- Flyway: `V1__init_schema.sql` (fundação) + `V2__create_users_table.sql` (identity) + `V3__create_refresh_tokens_table.sql` (refresh tokens) + `V4__create_organizations_and_memberships.sql` (multi-tenancy) — **o Prompt 05 não acrescenta migrations**.
 
 ## 4. Configuração por ambientes
 

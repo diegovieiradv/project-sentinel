@@ -111,18 +111,17 @@ public class SecurityConfig {
      * preflight bloqueia o double-submit CSRF cross-origin.</p>
      *
      * <p>{@code app.cors.allowed-origins} aceita origens separadas por vírgula.
-     * {@code "*"} não é aceito aqui: combinado com allowCredentials(true) ele é
-     * rejeitado pelo Spring e, mesmo se passasse, permitiria qualquer site a
-     * ler o cookie de refresh.</p>
+     * {@code "*"} não é aceito aqui: combinado com allowCredentials(true) ele
+     * permitiria que qualquer site lesse o cookie de refresh — por isso
+     * {@link #parseAllowedOrigins(String)} valida no <b>startup</b> e derruba a
+     * aplicação com {@link IllegalStateException} em vez de deixar o Spring
+     * rejeitar em runtime.</p>
      */
     @Bean
     CorsConfigurationSource corsConfigurationSource(
             @Value("${app.cors.allowed-origins:" + DEFAULT_FRONTEND_ORIGIN + "}") String allowedOrigins) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim)
-                .filter(origin -> !origin.isEmpty())
-                .toList());
+        configuration.setAllowedOrigins(parseAllowedOrigins(allowedOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(
                 List.of("Content-Type", "Authorization", "X-XSRF-TOKEN", "X-Organization-Id", "Accept"));
@@ -132,6 +131,43 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    /**
+     * Parsing da lista {@code app.cors.allowed-origins} (separada por vírgula):
+     * trim + descarte de entradas vazias e <b>fail-fast</b> de wildcard.
+     *
+     * <p>A validação roda na criação do bean — ou seja, no <b>startup</b> — e
+     * não em runtime: com {@code allowCredentials(true)} uma origem {@code "*"}
+     * é uma configuração inválida que só estouraria na primeira requisição
+     * preflight cross-origin (e, se passasse, permitiria que qualquer site
+     * lesse o cookie de refresh).</p>
+     */
+    static List<String> parseAllowedOrigins(String allowedOrigins) {
+        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
+        validateOrigins(origins);
+        return origins;
+    }
+
+    /**
+     * Wildcard é incompatível com credenciais: {@code CorsConfiguration} só
+     * rejeita isso em runtime ({@code validateAllowCredentials}), então aqui a
+     * regra é explícita para falhar no startup com mensagem acionável.
+     *
+     * @throws IllegalStateException se alguma origem contiver {@code *}
+     */
+    static void validateOrigins(List<String> origins) {
+        for (String origin : origins) {
+            if (origin.contains("*")) {
+                throw new IllegalStateException(
+                        "Invalid CORS configuration: origin \"" + origin + "\" contains a wildcard and is"
+                                + " incompatible with allowCredentials=true. List exact origins in"
+                                + " app.cors.allowed-origins (e.g. http://localhost:3000).");
+            }
+        }
     }
 
     @Bean

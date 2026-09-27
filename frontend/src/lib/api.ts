@@ -4,6 +4,8 @@
  * Auth (Prompt 03): access token em memória + refresh token em cookie HttpOnly + CSRF.
  * Multi-tenancy (Prompt 04): org ativa em memória + UUID persistido no localStorage
  * (`sentinel.activeOrganizationId`), sempre validado contra a lista de orgs do usuário.
+ * O valor (memória e storage) também precisa ter formato UUID válido — malformado é
+ * tratado como ausente e removido do storage (saneamento, não autorização).
  *
  * - Access token: guardado em variável de módulo (memória somente). NUNCA em localStorage/sessionStorage/cookie próprio.
  * - Refresh token: cookie HttpOnly do navegador — o JS nunca o lê nem manipula.
@@ -115,6 +117,25 @@ let activeOrganizationId: string | null = null;
 const ACTIVE_ORG_LOCAL_STORAGE_KEY = "sentinel.activeOrganizationId";
 
 /**
+ * Formato canônico de UUID (8-4-4-4-12 hex, qualquer versão/variante) — o mesmo
+ * que `UUID.fromString` do backend aceita.
+ */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Valida o **formato** de um UUID de organização (helper puro — sem window,
+ * storage nem rede). Aceita qualquer versão/variante; `typeof` cobre entradas
+ * não-string vindas de fora do TypeScript.
+ *
+ * Isso é saneamento de dados, NÃO um mecanismo de segurança: o backend é a
+ * autoridade de membership/tenant (`TenantInterceptor` valida org/path/header).
+ */
+export function isValidOrganizationId(value: unknown): boolean {
+  return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+/**
  * Evento de browser disparado por `apiFetch` quando a API responde **401**.
  * `AuthStatus` o escuta para limpar a sessão em memória e assumir estado anônimo
  * (um 401 em qualquer chamada derruba a sessão inteira, não só a chamada que falhou).
@@ -139,13 +160,27 @@ function persistActiveOrgId(id: string | null): void {
   }
 }
 
-/** Obtém a org ativa: primeiro memória, depois localStorage. */
+/**
+ * Obtém a org ativa: primeiro memória, depois localStorage.
+ * Valores malformados são tratados como ausentes (retornam `null`) e removidos
+ * do localStorage — limpeza defensiva contra entrada corrompida/editada à mão.
+ */
 export function getOrganizationId(): string | null {
-  if (activeOrganizationId) return activeOrganizationId;
+  if (activeOrganizationId) {
+    if (isValidOrganizationId(activeOrganizationId)) return activeOrganizationId;
+    // Malformado em memória → ausente, e limpa também a chave persistida.
+    activeOrganizationId = null;
+    persistActiveOrgId(null);
+    return null;
+  }
   if (typeof window !== "undefined") {
     try {
       const stored = localStorage.getItem(ACTIVE_ORG_LOCAL_STORAGE_KEY);
-      if (stored) return stored;
+      if (stored) {
+        if (isValidOrganizationId(stored)) return stored;
+        // Valor malformado persistido → descarta e remove a chave.
+        localStorage.removeItem(ACTIVE_ORG_LOCAL_STORAGE_KEY);
+      }
     } catch {
       // Ignorar erros de leitura de storage
     }
@@ -153,8 +188,15 @@ export function getOrganizationId(): string | null {
   return null;
 }
 
-/** Define a org ativa em memória e persiste no localStorage. */
+/**
+ * Define a org ativa em memória e persiste no localStorage.
+ * Entrada malformada nunca entra na memória — equivale a limpar (`null`).
+ */
 export function setOrganizationId(id: string | null): void {
+  if (id !== null && !isValidOrganizationId(id)) {
+    clearOrganizationId();
+    return;
+  }
   activeOrganizationId = id;
   persistActiveOrgId(id);
 }

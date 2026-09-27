@@ -163,6 +163,56 @@ class MembershipIntegrationTest extends AbstractTenantIntegrationTest {
     }
 
     @Test
+    void addMemberWithLowercaseInvalidRoleStillReturns400() throws Exception {
+        Fixture org = newOrganization("owner-lowercase-bad-role@example.com", "Lowercase Bad Role Corp");
+        register("Member LowerRole", "member-lowerrole@example.com");
+
+        // parseRole normaliza com toUpperCase(Locale.ROOT) também no caminho de
+        // FALHA: "superuser" não vira ADMIN nem vira 500 de enum — 400 com a
+        // mesma mensagem de domínio
+        mockMvc.perform(postCsrf("/api/v1/organizations/" + org.organizationId() + "/members")
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "email", "member-lowerrole@example.com",
+                                "role", "superuser"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value(
+                        "role: must be one of ADMIN, OPERATOR, VIEWER"));
+    }
+
+    @Test
+    void addMemberRoleIsCaseInsensitiveAndPersistsUppercase() throws Exception {
+        Fixture org = newOrganization("owner-role-case@example.com", "Role Case Corp");
+        register("Role Lower", "role-lower@example.com");
+        register("Role Mixed", "role-mixed@example.com");
+
+        // caixa baixa → normalizado para o enum
+        mockMvc.perform(postCsrf("/api/v1/organizations/" + org.organizationId() + "/members")
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "email", "role-lower@example.com",
+                                "role", "viewer"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("VIEWER"));
+
+        // caixa mista → normalizado para o enum
+        mockMvc.perform(postCsrf("/api/v1/organizations/" + org.organizationId() + "/members")
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "email", "role-mixed@example.com",
+                                "role", "Admin"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("ADMIN"));
+
+        assertThat(roleOf("role-lower@example.com", org.organizationId())).isEqualTo(Role.VIEWER);
+        assertThat(roleOf("role-mixed@example.com", org.organizationId())).isEqualTo(Role.ADMIN);
+    }
+
+    @Test
     void addSameMemberTwiceReturns409() throws Exception {
         Fixture org = newOrganization("owner-dup-member@example.com", "Dup Member Corp");
         register("Member Dup", "member-dup@example.com");
@@ -260,6 +310,19 @@ class MembershipIntegrationTest extends AbstractTenantIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Resource not found"));
     }
 
+    @Test
+    void listMembersWithMalformedOrganizationIdReturns404Not500() throws Exception {
+        Fixture org = newOrganization("owner-malformed-org-members@example.com", "Malformed Org Corp");
+
+        // organizationId fora do formato UUID é tratado pelo interceptor como
+        // organização inexistente — o mesmo 404 da rota de detalhe, nunca 500
+        mockMvc.perform(get("/api/v1/organizations/not-a-uuid/members")
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("Resource not found"));
+    }
+
     // --- PATCH .../members/{membershipId} ------------------------------------
 
     @Test
@@ -309,6 +372,51 @@ class MembershipIntegrationTest extends AbstractTenantIntegrationTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.message").value(
                         "role: must be one of ADMIN, OPERATOR, VIEWER"));
+    }
+
+    @Test
+    void updateRoleWithEmptyStringReturns400NotBlank() throws Exception {
+        Fixture org = newOrganization("owner-empty-role@example.com", "Empty Role Corp");
+        register("Empty Role", "empty-role@example.com");
+        addMember(org.ownerBearer(), org.organizationId(), "empty-role@example.com", "VIEWER");
+        String membershipId = membershipIdOf("empty-role@example.com", org.organizationId());
+
+        // string vazia != campo ausente: ambos caem no @NotBlank com a mesma
+        // mensagem de campo (nunca o 500 de enum/parse)
+        mockMvc.perform(patchCsrf(
+                                "/api/v1/organizations/"
+                                        + org.organizationId()
+                                        + "/members/"
+                                        + membershipId)
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("role", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("role: must not be blank"));
+
+        assertThat(roleOf("empty-role@example.com", org.organizationId())).isEqualTo(Role.VIEWER);
+    }
+
+    @Test
+    void updateRoleIsCaseInsensitiveAndPersistsUppercase() throws Exception {
+        Fixture org = newOrganization("owner-patch-case@example.com", "Patch Case Corp");
+        register("Patch Case", "patch-case@example.com");
+        addMember(org.ownerBearer(), org.organizationId(), "patch-case@example.com", "VIEWER");
+        String membershipId = membershipIdOf("patch-case@example.com", org.organizationId());
+
+        mockMvc.perform(patchCsrf(
+                                "/api/v1/organizations/"
+                                        + org.organizationId()
+                                        + "/members/"
+                                        + membershipId)
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("role", "Operator"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("OPERATOR"));
+
+        assertThat(roleOf("patch-case@example.com", org.organizationId())).isEqualTo(Role.OPERATOR);
     }
 
     @Test
@@ -406,6 +514,25 @@ class MembershipIntegrationTest extends AbstractTenantIntegrationTest {
                                         + org.organizationId()
                                         + "/members/not-a-uuid")
                         .header(HttpHeaders.AUTHORIZATION, org.ownerBearer()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("Resource not found"));
+    }
+
+    @Test
+    void updateMembershipWithMalformedIdReturns404Not500() throws Exception {
+        Fixture org = newOrganization("owner-malformed-patch@example.com", "Malformed Patch Corp");
+
+        // parse manual no controller: id fora do formato UUID → o MESMO 404
+        // genérico da membership inexistente (nunca MethodArgumentTypeMismatch
+        // nem 500)
+        mockMvc.perform(patchCsrf(
+                                "/api/v1/organizations/"
+                                        + org.organizationId()
+                                        + "/members/not-a-uuid")
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("role", "VIEWER"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("Resource not found"));

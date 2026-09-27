@@ -314,6 +314,42 @@ class AuthIntegrationTest {
     }
 
     @Test
+    void registerWithMalformedJsonReturns400ErrorShapeWithoutParserInternals() throws Exception {
+        // JSON truncado ("{"name": ") nunca pode virar 500 nem vazar o
+        // detalhe do parser: é entrada inválida do cliente → 400 no shape padrão
+        MvcResult result = mockMvc.perform(postCsrf("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\": \"Broken\", \"email\": "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("Malformed request body"))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.path").value("/api/v1/auth/register"))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain("JSON parse")
+                .doesNotContain("end-of-input")
+                .doesNotContain("Exception")
+                .doesNotContain("stackTrace");
+    }
+
+    @Test
+    void registerWithWrongJsonTypeReturns400ErrorShape() throws Exception {
+        // objeto onde o DTO espera string: desserialização impossível → 400,
+        // não o 500 do catch-all
+        mockMvc.perform(postCsrf("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\": {\"nested\": \"object\"},"
+                                + " \"email\": \"nested-type@example.com\","
+                                + " \"password\": \"secret123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("Malformed request body"))
+                .andExpect(jsonPath("$.path").value("/api/v1/auth/register"));
+    }
+
+    @Test
     void registerNormalizesEmailToLowercase() throws Exception {
         // bean validation @Email roda no controller (rejeita espaços); a
         // normalização de caso acontece no service antes de qualquer operação.
@@ -658,5 +694,18 @@ class AuthIntegrationTest {
         mockMvc.perform(get("/api/v1/health").header(HttpHeaders.ORIGIN, "http://evil.example"))
                 .andExpect(status().isForbidden())
                 .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+    }
+
+    // --- headers de segurança (defaults do Spring Security) -----------------
+
+    @Test
+    void securityHeadersArePresentOnResponses() throws Exception {
+        // Defaults do HeadersConfigurer (não reconfigurados por causa do
+        // teste): nosniff impede MIME-sniffing e X-Frame-Options bloqueia
+        // clickjacking (DENY, conforme o default documentado do Spring Security)
+        mockMvc.perform(get("/api/v1/health"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("X-Frame-Options", "DENY"));
     }
 }

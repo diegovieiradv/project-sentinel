@@ -116,6 +116,46 @@ class OrganizationIntegrationTest extends AbstractTenantIntegrationTest {
     }
 
     @Test
+    void createOrganizationWithMalformedJsonReturns400ErrorShapeWithoutParserInternals()
+            throws Exception {
+        String bearer = registerAndLogin("Malformed JSON", "malformed-json-org@example.com");
+
+        // JSON truncado autenticado: 400 no shape padrão, nunca 500 — e sem
+        // vazar o detalhe do parser Jackson no corpo
+        MvcResult result = mockMvc.perform(postCsrf("/api/v1/organizations")
+                        .header(HttpHeaders.AUTHORIZATION, bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\": "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("Malformed request body"))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.path").value("/api/v1/organizations"))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain("JSON parse")
+                .doesNotContain("end-of-input")
+                .doesNotContain("Exception")
+                .doesNotContain("stackTrace");
+    }
+
+    @Test
+    void createOrganizationWithWrongJsonTypeReturns400ErrorShape() throws Exception {
+        String bearer = registerAndLogin("Wrong Type", "wrong-type-org@example.com");
+
+        // objeto onde o DTO espera string → desserialização impossível → 400
+        mockMvc.perform(postCsrf("/api/v1/organizations")
+                        .header(HttpHeaders.AUTHORIZATION, bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\": {\"nested\": \"object\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("Malformed request body"))
+                .andExpect(jsonPath("$.path").value("/api/v1/organizations"));
+    }
+
+    @Test
     void createOrganizationWithoutAuthenticationReturns401() throws Exception {
         // sem Authorization (CSRF presente: sem ele o filtro daria 403 antes)
         mockMvc.perform(postCsrf("/api/v1/organizations")

@@ -1,6 +1,6 @@
 # Identity — Sentinel
 
-> **Prompt 03 de 18** (escopo de auth; ajustado no **Prompt 04**). Este documento descreve **o que está construído**: autenticação *stateless* (access token JWT HS256 + refresh token opaco em cookie `HttpOnly` com rotação e revogação), CSRF em double-submit e CORS configurável. Multi-tenancy e organizações entraram no **Prompt 04** — ver [organizations.md](organizations.md); autorização por recurso (além dos papéis de organização), MFA e reset de senha continuam fora do escopo.
+> **Prompt 03 de 18** (escopo de auth; ajustado no **Prompt 04** e endurecido no **Prompt 05**). Este documento descreve **o que está construído**: autenticação *stateless* (access token JWT HS256 + refresh token opaco em cookie `HttpOnly` com rotação e revogação), CSRF em double-submit e CORS configurável (com validação fail-fast das origens). Multi-tenancy e organizações entraram no **Prompt 04** — ver [organizations.md](organizations.md); autorização por recurso (além dos papéis de organização), MFA e reset de senha continuam fora do escopo.
 
 ## 1. Escopo implementado
 
@@ -15,6 +15,9 @@
 | `GET /api/v1/auth/me` (Bearer) | Construído |
 | CSRF double-submit (`XSRF-TOKEN` / `X-XSRF-TOKEN`) | Construído |
 | CORS configurável por `app.cors.allowed-origins` | Construído |
+| Validação fail-fast das origens CORS (curinga rejeitado com `allowCredentials`) | Construído no **Prompt 05** |
+| `400 VALIDATION_ERROR` genérico para corpo JSON malformado e parâmetro de tipo inválido | Construído no **Prompt 05** |
+| Headers de segurança `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY` | Construído no **Prompt 05** (defaults do Spring Security mantidos e verificados) |
 | 404 padronizado para rota desconhecida (sem autenticar) | Construído |
 | Organization / Membership / papéis por organização (`Role`) | Construído no **Prompt 04** → [organizations.md](organizations.md) |
 | MFA / reset de senha / verificação de e-mail / dashboard | **Fora do escopo** |
@@ -129,14 +132,16 @@ Base: `http://localhost:8080`
 - Todo método não-safe sem o header, ou com header ≠ cookie, recebe **403** no shape padrão `{"code":"FORBIDDEN",...}` — no Prompt 03 isso era só `POST`; o Prompt 04 passou a usar também `PATCH` e `DELETE` (gestão de membros), com a mesma regra.
 - Em testes o fluxo é o real: `GET /health` → ler o cookie da resposta → enviar cookie + header. **Nenhum teste usa `.with(csrf())`.**
 
-## 5. CORS
+## 5. CORS e headers de segurança
 
 - Fonte única: `SecurityConfig.corsConfigurationSource`, consumido pelo filter chain (cobre preflight).
 - Origens: `app.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`), lista separada por vírgula, default `http://localhost:3000`.
 - `allowCredentials(true)` + origem exata (nunca `*` — rejeitado pelo Spring e permitiria ler cookies de qualquer site).
+- **Validação fail-fast no startup (Prompt 05):** a lista é normalizada (`trim` + descarte de vazios) e **recusada na subida da aplicação** se qualquer origem conter curinga (`*`, ex.: `http://*.example.com`) enquanto `allowCredentials` está ativo — a mensagem cita `wildcard`, `allowCredentials=true` e a propriedade `app.cors.allowed-origins`. A regra é coberta por teste unitário (`SecurityConfigOriginsTest`) para não depender de um boot quebrado em CI.
 - Headers permitidos: `Content-Type`, `Authorization`, `X-XSRF-TOKEN`, `X-Organization-Id`, `Accept`; métodos `GET, POST, PUT, PATCH, DELETE, OPTIONS`; preflight 3600 s. (`PATCH` e `X-Organization-Id` entraram no **Prompt 04** — `PATCH` no papel de membro e o header na resolução de tenant.)
 - Origem não permitida → `403 Invalid CORS request` sem `Access-Control-Allow-Origin`.
 - O preflight responde `Access-Control-Allow-Headers` com os headers **pedidos que estão na lista branca** (o Spring normaliza para minúsculas).
+- **Headers de segurança (Prompt 05):** a cadeia mantém os defaults do Spring Security — `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY` em toda resposta (verificado em `AuthIntegrationTest.securityHeadersArePresentOnResponses`). Nenhum header de cache/serviço interno é exposto.
 
 ## 6. Contrato de erro
 
@@ -148,7 +153,7 @@ Shape padrão (Prompt 01):
 
 | Código | HTTP | Quando |
 | --- | --- | --- |
-| `VALIDATION_ERROR` | 400 | Payload inválido (email em branco/`@Email`, name em branco, etc.) |
+| `VALIDATION_ERROR` | 400 | Payload inválido (email em branco/`@Email`, name em branco, etc.); **corpo JSON malformado** (`"Malformed request body"`) e **campo/parâmetro de tipo errado** (`"Invalid request parameter"`) — Prompt 05, mensagem genérica sem detalhe do parser/conversão |
 | `INVALID_PASSWORD` | 400 | Senha fora da política (8+, letra + dígito) |
 | `INVALID_CREDENTIALS` | 401 | Login com senha errada, usuário inexistente ou inativo |
 | `UNAUTHORIZED` | 401 | Rota protegida sem/inválido Bearer (entry point) |
@@ -183,7 +188,7 @@ O segredo **nunca** é logado nem serializado.
 com.sentinel
 ├── JwtProperties.java                 # @ConfigurationProperties("jwt")
 ├── JwtConfiguration.java              # resolve/valida o segredo (fail-fast em prod)
-├── SecurityConfig.java                # filter chain, CSRF, CORS, converter, 401/403
+├── SecurityConfig.java                # filter chain, CSRF, CORS (+ fail-fast de origens), converter, 401/403
 ├── identity
 │   ├── auth
 │   │   ├── AuthController.java        # /register /login /refresh /logout /me + cookie
@@ -202,7 +207,7 @@ com.sentinel
 │       ├── User.java                  # entidade `users` + UserDetails
 │       ├── UserRepository.java
 │       └── UserService.java           # register (política/BCrypt/409) + authenticate (401)
-├── error/GlobalExceptionHandler.java  # + handlers 404 e 405 (405 veio no Prompt 04)
+├── error/GlobalExceptionHandler.java  # + handlers 400 (corpo malformado/tipo), 404 e 405 (405 no Prompt 04, 400 no Prompt 05)
 └── config/                            # async
 ```
 
@@ -227,11 +232,12 @@ com.sentinel
 
 ## 10. Testes
 
-- `mvn test` — **100 testes, 0 falhas** (contagem confirmada pela execução no Prompt 04; eram 54 antes dele):
-  - `AuthIntegrationTest` (32): register (8), CSRF/materialização do cookie e 403, login stateless, `/me`, Bearer negativos (malformado, chave errada, `sub` desconhecido, expirado, usuário desativado), CORS/preflight/origem estrangeira (incluindo o preflight com `PATCH` + `X-Organization-Id` do Prompt 04), 404.
+- `mvn test` — **135 testes, 0 falhas, exit 0** (contagem confirmada pela execução no Prompt 05; eram 100 no fim do Prompt 04 e 54 antes dele):
+  - `AuthIntegrationTest` (35): register (8), CSRF/materialização do cookie e 403, login stateless, `/me`, Bearer negativos (malformado, chave errada, `sub` desconhecido, expirado, usuário desativado), CORS/preflight/origem estrangeira (incluindo o preflight com `PATCH` + `X-Organization-Id` do Prompt 04), 404, **corpo malformado/tipo errado → 400 genérico e headers de segurança (`nosniff`, `X-Frame-Options`) — Prompt 05**.
   - `RefreshTokenIntegrationTest` (11): hash SHA-256 de 64 chars no banco, ausência do token no corpo JSON, rotação, reuso → revogação em massa, token forjado/expirado/ausente, logout idempotente, fluxo completo, atributos do cookie.
-  - `UserRepositoryTest` (5), `GlobalExceptionHandlerTest` (6 — a 6ª cobre o `405 METHOD_NOT_ALLOWED` do Prompt 04), `HealthControllerTest` (1), `SentinelApplicationTests` (1).
-  - `OrganizationIntegrationTest` (12), `MembershipIntegrationTest` (24), `MultiTenantScenarioTest` (8) — multi-tenancy do Prompt 04, detalhados em [organizations.md](organizations.md).
+  - `UserRepositoryTest` (5), `HealthControllerTest` (1), `SentinelApplicationTests` (1).
+  - `GlobalExceptionHandlerTest` (8 — a 6ª cobre o `405 METHOD_NOT_ALLOWED` do Prompt 04; a 7ª/8ª cobrem corpo malformado e `MethodArgumentTypeMismatchException` no **Prompt 05**, **sem** detalhe do parser/conversão na resposta), `SecurityConfigOriginsTest` (7 — validação fail-fast das origens CORS, **Prompt 05**).
+  - `OrganizationIntegrationTest` (14), `MembershipIntegrationTest` (30), `MultiTenantScenarioTest` (8), `StaleAuthorizationTest` (2), `IdorAdversarialTest` (6), `LastAdminConcurrencyTest` (4), `TenantContextIsolationTest` (3) — multi-tenancy e tenant security, detalhados em [organizations.md](organizations.md).
 - Cada classe `@SpringBootTest` tem seu próprio `PostgreSQLContainer` → contexto próprio (o `ServiceConnectionContextCustomizer` usa igualdade por identidade do container).
 - Frontend: adaptado ao contrato stateless (access token em memória, CSRF via `X-XSRF-TOKEN`, bootstrap via `POST /refresh`). Validação: `npm run lint && npm run type-check && npm run build` — executado com exit 0.
 

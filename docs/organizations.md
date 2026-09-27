@@ -1,6 +1,6 @@
 # Organizations (multi-tenancy) — Sentinel
 
-> **Prompt 04 de 18.** Este documento descreve **o que está construído**: organizações (tenants), memberships com papéis por organização (`ADMIN` / `OPERATOR` / `VIEWER`), resolução de contexto de tenant (`TenantContext` + `TenantInterceptor` + `@TenantScoped`), regra do último ADMIN e isolamento cross-tenant. A base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
+> **Prompt 04 de 18** (escopo de multi-tenancy), **endurecido no Prompt 05** (Tenant Security, ownership, IDOR e hardening). Este documento descreve **o que está construído**: organizações (tenants), memberships com papéis por organização (`ADMIN` / `OPERATOR` / `VIEWER`), resolução de contexto de tenant (`TenantContext` + `TenantInterceptor` + `@TenantScoped`), regra do último ADMIN, isolamento cross-tenant e as garantias de segurança do Prompt 05 (autoridade por requisição, ataques IDOR adversariais, concorrência do último ADMIN, corpo/parâmetro inválidos e CORS fail-fast). A base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
 
 ## 1. Escopo implementado
 
@@ -16,6 +16,11 @@
 | Regra do último ADMIN → `409 LAST_ADMIN_REQUIRED` sob lock pessimista (`SELECT ... FOR UPDATE`) | Construído |
 | Isolamento cross-tenant → `404` genérico anti-enumeração | Construído |
 | CORS com método `PATCH` e header `X-Organization-Id` | Construído |
+| Autoridade consultada por requisição: o mesmo access token reflete promoção/rebaixamento/remoção sem refresh | Construído no **Prompt 05** |
+| Ataques IDOR (`GET/POST/PATCH/DELETE` cross-tenant, membershipId de outro tenant/aleatório, path × header divergente) → sempre o mesmo `404` | Construído no **Prompt 05** |
+| Concorrência do último ADMIN coberta para `PATCH × PATCH`, `PATCH × DELETE` e dois ADMINs em corrida | Construído no **Prompt 05** |
+| Corpo JSON malformado / parâmetro de tipo inválido → `400` genérico (nunca `500`) | Construído no **Prompt 05** |
+| Origens CORS validadas no startup (fail-fast) + headers `nosniff` / `X-Frame-Options: DENY` | Construído no **Prompt 05** |
 | Frontend: listar/criar/selecionar organização + gerenciar membros | Construído |
 | Vinculação de projetos/serviços/monitoramento à organização | **Fora do escopo** (prompts futuros) |
 
@@ -217,6 +222,17 @@ O papel vem de `TenantContext.role()` — populado pelo interceptor a partir do 
 
 Operações concorrentes sobre o mesmo tenant são **serializadas** em vez de decidirem sobre uma contagem potencialmente obsoleta (o teste `concurrentDeleteOfSoleAdminNeverLeavesOrganizationWithoutAdmin` cobre isso).
 
+O **Prompt 05** ampliou a cobertura de corrida para os pares que só o lock resolve — todos em `LastAdminConcurrencyTest`:
+
+| Cenário | Resultado esperado |
+| --- | --- |
+| `PATCH × PATCH` no último `ADMIN` | os dois `409` (ambos decidem dentro do lock) |
+| `PATCH × DELETE` na mesma membership do último `ADMIN` | os dois `409` (o `DELETE` não aproveita um rebaixamento que não aconteceu) |
+| Dois `ADMIN`s rebaixados **concorrentemente** (um por thread) | exatamente **um** vence; o outro é `409`/`403` — **nunca zero ADMINs** |
+| `PATCH` num `ADMIN` × `DELETE` noutro `ADMIN`, simultâneos | exatamente **um** vence (`200`/`204`); o outro é `409`/`404` — restam exatamente um `ADMIN` |
+
+Sem o lock, os dois últimos cenários partiriam de contagem=2 lida fora da transação crítica e deixariam a organização **sem nenhum** administrador — é o caso que só o `SELECT ... FOR UPDATE` cobre.
+
 ### 5.3 Isolamento cross-tenant (anti-enumeração)
 
 O **mesmo** `404` `{"code":"NOT_FOUND","message":"Resource not found"}` é devolvido para:
@@ -231,6 +247,27 @@ O **mesmo** `404` `{"code":"NOT_FOUND","message":"Resource not found"}` é devol
 | E-mail não cadastrado no `POST .../members` | `MembershipService` |
 
 O teste `unknownAndForeignOrganizationsReturnTheSame404Body` compara `code` e `message` dos dois corpos e exige `"Resource not found"` nos dois — os campos `timestamp`/`path` não entram na comparação.
+
+O **Prompt 05** varreu a matriz inteira de ataques em `IdorAdversarialTest`, sobre o cenário canônico **Alpha** (Alice=`ADMIN`, Bob=`OPERATOR`) × **Beta** (Bob=`ADMIN`, Alice=`VIEWER`) × **Charlie** (sem membership nenhuma):
+
+| Tentativa | Resposta |
+| --- | --- |
+| `GET` da organização por quem não é membro (Charlie, nas duas) | `404` genérico idêntico |
+| `GET/POST/PATCH/DELETE .../members` por não-membro (alvo com membership **válida** no path) | `404` genérico, escrita **não aplicada** |
+| `membershipId` de outro tenant usado no path da organização própria | `404`; a membership de origem permanece intacta |
+| `membershipId` UUID válido inexistente | `404`, sem efeito colateral |
+| Path `organizationId` ≠ header `X-Organization-Id` numa rota de membros | `404` (nunca `403`, que confirmaria qual existe) |
+| Não-**ADMIN** mas membro (ex.: Alice na Beta) | `403 "Access denied"` — o `404` é exclusivo de **não-membro** |
+
+### 5.5 Autoridade por requisição (o token nunca fica "vazio")
+
+O access token **não** carrega papel nem tenant (claims mínimas: `sub`/`iat`/`exp`), então ele não tem como ficar desatualizado: cada requisição relê a membership no banco, no `preHandle`, e o service lê `TenantContext.role()` **na própria requisição**. Consequências verificadas em `StaleAuthorizationTest`, sempre com **um único** token emitido no login (sem refresh no meio):
+
+- promover `OPERATOR → ADMIN` → a mesma requisição seguinte já passa nos endpoints admin-only;
+- rebaixar `ADMIN → VIEWER` → os quatro endpoints `/members` passam a responder `403` imediatamente (a listagem, inclusive);
+- remover a membership → o mesmo token passa a receber o `404` genérico naquele tenant e a organização **some da listagem** `GET /api/v1/organizations`.
+
+O recíproco também é coberto: o papel exibido em `GET /organizations/{id}` é o **do chamador** (`IdorAdversarialTest`), e requisições concorrentes de tenants/papéis diferentes nunca enxergam o contexto uma da outra (`TenantContextIsolationTest` — além da limpeza sequencial já coberta pelo `MultiTenantScenarioTest`).
 
 ### 5.4 `TENANT_REQUIRED` (`400`)
 
@@ -247,7 +284,7 @@ Shape padrão da API (o mesmo do [identity.md](identity.md)):
 
 | Código | HTTP | Quando |
 | --- | --- | --- |
-| `VALIDATION_ERROR` | 400 | `name` em branco/>128; `role` em branco ou fora de `ADMIN/OPERATOR/VIEWER`; `email` inválido |
+| `VALIDATION_ERROR` | 400 | `name` em branco/>128; `role` em branco ou fora de `ADMIN/OPERATOR/VIEWER`; `email` inválido; **corpo JSON malformado** (`"Malformed request body"`) e **tipo errado em campo/parâmetro** (`"Invalid request parameter"`) — Prompt 05, sempre mensagem genérica, sem detalhe do parser/conversão |
 | `TENANT_REQUIRED` | 400 | Handler `@TenantScoped` sem path nem header (módulos futuros) |
 | `UNAUTHORIZED` | 401 | Sem/inválido Bearer |
 | `FORBIDDEN` | 403 | CSRF ausente/inválido **ou** papel ≠ `ADMIN` (`"Access denied"`) |
@@ -258,10 +295,13 @@ Shape padrão da API (o mesmo do [identity.md](identity.md)):
 | `INTERNAL_ERROR` | 500 | Erros inesperados (catch-all, sem vazar internals) |
 
 > O handler de `405` é **global** (não específico de organizações): sem ele, `HttpRequestMethodNotSupportedException` caía no catch-all e virava `500`.
+>
+> Os dois handlers de `400` do Prompt 05 (`HttpMessageNotReadableException` e `MethodArgumentTypeMismatchException`) também são **globais**. Hoje nenhum endpoint dispara o segundo naturalmente — os ids de tenant entram como `String` e são parseados à mão, e a falha de parse vira `404` anti-enumeração **antes** (interceptor/controller), não `400`. O teste unitário `GlobalExceptionHandlerTest.typeMismatchReturns400WithGenericMessageAndNoConversionDetail` cobre o handler diretamente, registrando essa limitação. Nenhuma das duas respostas devolve o detalhe do parser (`JsonParseException`) nem o valor/tipo esperado da conversão.
 
-## 7. CORS e configuração
+## 7. CORS, headers de segurança e configuração
 
 - **Nenhuma variável nova** no Prompt 04: as origens continuam em `app.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`, default `http://localhost:3000`), única fonte em `SecurityConfig.corsConfigurationSource`.
+- **Fail-fast das origens (Prompt 05):** a lista é normalizada e validada no startup via `SecurityConfig.validateOrigins` — qualquer origem com curinga (`*`) enquanto `allowCredentials=true` derruba a aplicação com mensagem citando `wildcard`, `allowCredentials=true` e `app.cors.allowed-origins`. Em dev/local, a porta de entrada continua exatamente a mesma (`corsConfigurationSource`), mudou apenas o momento em que um valor ilegal é detectado: **antes** de servir tráfego. Testado por `SecurityConfigOriginsTest` (7 casos unitários: origem exata, múltiplas, `*` isolado e `*` entre válidas, curinga parcial `http://*.example.com`, espaços e lista vazia).
 - Mudanças de **métodos** e **headers** (necessárias para o frontend):
 
 | | Antes (Prompt 03) | Agora (Prompt 04) |
@@ -272,6 +312,7 @@ Shape padrão da API (o mesmo do [identity.md](identity.md)):
 - `PATCH` é o método do endpoint `PATCH .../members/{membershipId}` (troca de papel) — sem ele na lista, o preflight do navegador bloquearia a chamada.
 - `X-Organization-Id` é a fonte de tenant para handlers `@TenantScoped` **sem** organização no path (futuros módulos); o preflight precisa anunciá-lo.
 - `allowCredentials(true)` + origem exata permanecem (nunca `*`).
+- **Headers de segurança (Prompt 05):** a cadeia mantém os defaults do Spring Security — `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY` em toda resposta. Verificado em `AuthIntegrationTest.securityHeadersArePresentOnResponses`; não há `Server`/`X-Powered-By` customizado nem detalhe de stack trace no corpo de erro.
 - Preflight coberto por teste: `preflightAdmitsPatchAndOrganizationIdHeaderForTenantModule`.
 
 ## 8. Frontend
@@ -324,19 +365,26 @@ com.sentinel
         └── TenantWebConfig.java                 # registra o interceptor (não mexe no SecurityConfig)
 ```
 
-- `GlobalExceptionHandler` ganhou o handler de `405` (Prompt 04, D7).
-- `SecurityConfig` só mudou em **CORS** (método `PATCH` + header `X-Organization-Id`).
+- `GlobalExceptionHandler` ganhou o handler de `405` (Prompt 04, D7) e, no **Prompt 05**, os handlers globais de `HttpMessageNotReadableException` (`400 "Malformed request body"`) e `MethodArgumentTypeMismatchException` (`400 "Invalid request parameter"`). O corpo malformado é registrado em `debug` (com a causa original) no servidor; nenhum dos dois devolve ao cliente o detalhe do parser nem o valor/tipo da conversão.
+- `SecurityConfig` mudou em **CORS** (método `PATCH` + header `X-Organization-Id`, Prompt 04) e ganhou `parseAllowedOrigins`/`validateOrigins` estáticos com validação fail-fast no startup (Prompt 05).
 - `parseRole`/`normalizeEmail` vivem no `MembershipService` porque `UserService.normalizeEmail` é `package-private` no pacote `identity` e o escopo do Prompt 04 não permitiu alterá-lo.
 
 ## 10. Testes
 
-- `mvn test` — **100 testes, 0 falhas, exit 0** (execução confirmada no Prompt 04). Classes novas:
-  - `OrganizationIntegrationTest` (12): criação `201` + membership `ADMIN` na mesma transação, nome em branco/>128 → `400`, `401` sem token, listagem **por usuário**, detalhe com `role`, `404` genérico para não-membro, `404` para id malformado, e três casos de `405` (`DELETE` na coleção e no detalhe, `PUT` no detalhe).
-  - `MembershipIntegrationTest` (24): adicionar (`201`, `404` e-mail desconhecido, `400` role inválido/em branco, `409` duplicado), listar (admin vê tudo sem hashes; `403` para `VIEWER`; `401`; `404` para não-membro), trocar papel (`200`, `400`, `404` cross-tenant, `409 LAST_ADMIN_REQUIRED`), remover (`204`, `409`, `404` id malformado), `403` para `OPERATOR` nas quatro rotas de `/members` e para `VIEWER` nas rotas de escrita, `200` ao rebaixar um segundo ADMIN, remoção/troca cross-tenant → `404`, e **dois testes de concorrência** (delete duplo serializado; delete do último ADMIN nunca deixa a organização sem admin).
-  - `MultiTenantScenarioTest` (8): resolução via header com `ProbeController`, `400 TENANT_REQUIRED` sem fonte de tenant, `401` antes da resolução, `404` idêntico para org desconhecida × estrangeira, header malformado → `404` (não `500`), path ≠ header → `404`, path sozinho basta, e limpeza do `ThreadLocal` após sucesso **e** após falha.
-- Impacto nas classes pré-existentes: `AuthIntegrationTest` 31 → **32** (preflight `PATCH` + `X-Organization-Id`) e `GlobalExceptionHandlerTest` 5 → **6** (`405`).
-- Todas as classes `@SpringBootTest` seguem com contexto próprio por `PostgreSQLContainer` (Testcontainers); as de organização herdam os helpers de `AbstractTenantIntegrationTest` (CSRF **real** via cookie/header — nenhum teste usa `.with(csrf())`).
-- Frontend: `npm run lint && npm run type-check && npm run build` — exit 0.
+- `mvn test` — **135 testes, 0 falhas, exit 0** (execução confirmada no Prompt 05; eram 100 no fim do Prompt 04).
+- **Classes novas no Prompt 05** (todas herdam `AbstractTenantIntegrationTest`):
+  - `StaleAuthorizationTest` (2): o **mesmo** access token vendo promoção (`OPERATOR → ADMIN`), rebaixamento (`ADMIN → VIEWER`, nos quatro endpoints) e remoção (404 genérico + sumiço da listagem) — sem nenhum refresh no meio.
+  - `IdorAdversarialTest` (6): cenário Alpha/Beta/Charlie com leituras escopadas, os quatro endpoints sob não-membro → `404` sem escrita, autoridade por tenant (o mesmo usuário é `ADMIN` numa org e `OPERATOR` noutra), membershipId de outro tenant/aleatório → `404` intacto e path × header divergente nas rotas de membros.
+  - `LastAdminConcurrencyTest` (4): `PATCH × PATCH` e `PATCH × DELETE` do último ADMIN (dois `409`), dois ADMINs rebaixados em corrida e `PATCH` × `DELETE` em ADMINs distintos (sempre **exatamente um** vence, nunca zero ADMINs).
+  - `TenantContextIsolationTest` (3): limpeza sequencial nas rotas reais, threads concorrentes de tenants distintos (inclusive caminho de falha `404` no meio) e mesmo tenant com papéis diferentes — cada resposta com o papel do próprio chamador.
+  - `SecurityConfigOriginsTest` (7, em `identity/`): validação fail-fast das origens CORS.
+- **Classes existentes** (cobertura do Prompt 04 mantida; entre parênteses o total atual):
+  - `OrganizationIntegrationTest` (14, era 12): criação `201` + membership `ADMIN` na mesma transação, validação de `name`, `401` sem token, listagem **por usuário**, detalhe com `role`, `404` anti-enumeração e três casos de `405` — **+2** de corpo malformado e tipo errado no `POST /organizations` → `400` genérico.
+  - `MembershipIntegrationTest` (30, era 24): adicionar (`201`, `404` e-mail desconhecido, `400` role inválido/em branco, `409` duplicado), listar (admin vê tudo sem hashes; `403` para `VIEWER`; `401`; `404` para não-membro), trocar papel (`200`, `400`, `404` cross-tenant, `409 LAST_ADMIN_REQUIRED`), remover (`204`, `409`, `404` id malformado), `403` para `OPERATOR` nas quatro rotas e para `VIEWER` nas de escrita, `200` ao rebaixar um segundo ADMIN, cross-tenant → `404` e **dois testes de concorrência** (delete duplo serializado; delete do último ADMIN) — **+6** de `role` com caixa baixa/mista normalizado no `POST` e no `PATCH`, `role: ""` → `400` `"must not be blank"` e `organizationId`/`membershipId` malformados → `404` (nunca `500`).
+  - `MultiTenantScenarioTest` (8, inalterado): `ProbeController` `@TenantScoped` sem id no path (`400 TENANT_REQUIRED`), `401` antes da resolução, `404` idêntico para org desconhecida × estrangeira, header malformado, path × header divergente e limpeza do `ThreadLocal` após sucesso **e** após falha — é a base sequencial que `TenantContextIsolationTest` complementa com concorrência.
+  - `AuthIntegrationTest` 32 → **35** (corpo malformado e tipo errado no `POST /register` → `400` sem detalhe do parser; headers `nosniff` e `X-Frame-Options: DENY`) e `GlobalExceptionHandlerTest` 6 → **8** (corpo malformado e `MethodArgumentTypeMismatchException` → `400` sem vazar parser/conversão).
+- Todas as classes `@SpringBootTest` seguem com contexto próprio por `PostgreSQLContainer` (Testcontainers); as de organização herdam os helpers de `AbstractTenantIntegrationTest` (CSRF **real** via cookie/header — nenhum teste usa `.with(csrf())`). Os testes de concorrência usam `CountDownLatch` + `ExecutorService` de 2 threads com `csrf()` aquecido antes das threads.
+- Frontend: `npm run lint && npm run type-check && npm run build` — exit 0 (execução no Prompt 04; fora do escopo do Prompt 05).
 
 ## 11. Fora do escopo (prompts futuros)
 
