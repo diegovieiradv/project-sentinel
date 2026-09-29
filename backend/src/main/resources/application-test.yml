@@ -6,3 +6,10 @@ spring:
   jpa:
     show-sql: false
   # Flyway permanece HABILITADO — os testes usam Testcontainers com PostgreSQL real.
+
+# Monitoring Engine (Prompt 09): agendamento DESLIGADO no perfil de teste.
+# Assim nenhum @Scheduled do motor é registrado e nenhum teste existente é
+# afetado por tick/timing/rede. Os testes do engine chamam tick() na mão.
+sentinel:
+  monitoring:
+    enabled: false

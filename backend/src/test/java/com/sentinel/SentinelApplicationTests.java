@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
@@ -17,8 +18,15 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * o módulo JUnit Jupiter do Testcontainers 2.x não integra ao escopo de
  * dependências aprovado; @ServiceConnection do Spring Boot resolve a
  * conexão a partir do campo estático.
+ *
+ * <p>{@code @ActiveProfiles("test")}: sem o perfil, o default
+ * {@code spring.profiles.active: dev} do application.yml valeria e
+ * {@code application-test.yml} (com {@code sentinel.monitoring.enabled:
+ * false}) não carregaria — o agendador do Monitoring Engine registraria o
+ * {@code @Scheduled} com initialDelay 0 e dispararia um tick neste contexto.</p>
  */
 @SpringBootTest
+@ActiveProfiles("test")
 class SentinelApplicationTests {
 
     @ServiceConnection
