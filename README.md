@@ -2,7 +2,7 @@
 
 **Plataforma multi-tenant de observabilidade e gerenciamento de incidentes** — em construção.
 
-> **Aviso: este é o Prompt 07 de 18 — Services (serviços de um projeto). Coleta de dados de saúde, alertas e incidentes NÃO existem ainda.**
+> **Aviso: este é o Prompt 08 de 18 — Monitors (configuração de monitoramento de um serviço). Coleta de dados de saúde, alertas e incidentes NÃO existem ainda.**
 
 ## Estado atual
 
@@ -13,6 +13,7 @@
 - **Prompt 05 — tenant security / IDOR / hardening**: autoridade lida **por requisição** no servidor (o mesmo access token reflete promoção/rebaixamento/remoção sem refresh), tentativas cross-tenant (`GET`, `POST`, `PATCH`, `DELETE`) respondendo o `404` genérico anti-enumeração, concorrência do último ADMIN coberta para `PATCH × PATCH`, `PATCH × DELETE` e dois ADMINs em corrida, `400 VALIDATION_ERROR` genérico para corpo malformado e parâmetro de tipo inválido (sem vazar detalhes do parser), validação **fail-fast** das origens CORS no startup (wildcard com `allowCredentials` é erro de boot) e headers de segurança `X-Content-Type-Options: nosniff` + `X-Frame-Options: DENY`. Sem migrations novas.
 - **Prompt 06 — projects**: projetos de cada organização em `/api/v1/organizations/{organizationId}/projects` (criar, listar com paginação/filtros/ordenação, detalhar, atualizar e ativar/desativar), pacote `com.sentinel.project`, tabela `projects` (`V5`), unicidade de nome por organização em duas camadas (`409 PROJECT_NAME_DUPLICATE`, inclusive sob concorrência), RBAC sobre `TenantContext.role()` (leitura para qualquer papel, mutação para `ADMIN`/`OPERATOR`), isolamento cross-tenant com `404` genérico e `DELETE` → `405` (a remoção não existe). Contrato em [docs/projects.md](docs/projects.md).
 - **Prompt 07 — services**: serviços de cada projeto em `/api/v1/organizations/{organizationId}/projects/{projectId}/services` (criar, listar com paginação/filtros `active`/`status`/`name`, detalhar, atualizar e ativar/desativar), entidades `Service`/`ServiceStatus` no mesmo pacote `com.sentinel.project`, tabela `services` (`V6`), unicidade de nome **por projeto** em duas camadas (`409 SERVICE_NAME_DUPLICATE`, inclusive sob concorrência), autorização encadeada Organization → Project → Service em duas consultas tenant-scoped (nunca `findById` avulso), projeto inativo → leitura `200` × mutação `409 PROJECT_INACTIVE`, `status` (`UNKNOWN` por padrão) como eixo de **servidor sem endpoint de alteração**, `DELETE` → `405`. Contrato em [docs/services.md](docs/services.md).
+- **Prompt 08 — monitors**: monitores HTTP/HTTPS de cada serviço em `/api/v1/organizations/{organizationId}/projects/{projectId}/services/{serviceId}/monitors` (criar, listar com paginação/filtros `active`/`method`/`name`, detalhar, atualizar e ativar/desativar), quarto nível da hierarquia Organization → Project → Service → Monitor, sub-pacote `com.sentinel.project.monitor` + guarda SSRF em `com.sentinel.project.security`, tabela `monitors` (`V7`), unicidade de nome **por serviço** em duas camadas (`409 MONITOR_NAME_DUPLICATE`, inclusive sob concorrência), autorização encadeada em três consultas tenant-scoped (nunca `findById` avulso), pais inativos → leitura `200` × mutação `409 PROJECT_INACTIVE`/`409 SERVICE_INACTIVE` com desativação fail-safe, alvo privado/loopback recusado **antes de persistir** (`400 MONITOR_TARGET_NOT_ALLOWED`), `type=HTTP` como eixo de servidor sem endpoint de alteração, `DELETE` → `405`. A **execução** das checagens, resultados e status operacional continuam **fora do escopo** (Prompt 09+). Contrato em [docs/monitors.md](docs/monitors.md).
 - **Ainda NÃO existem**: coleta de dados de saúde dos serviços, regras de alerta, incidentes, dashboards, trilha de auditoria, recuperação de senha, verificação de e-mail nem MFA.
 
 > O **frontend foi adaptado** a este contrato: access token em memória + header `Authorization: Bearer`, refresh token em cookie `HttpOnly`, CSRF por header `X-XSRF-TOKEN` e bootstrap de sessão via `POST /api/v1/auth/refresh`. No Prompt 04 ele também passou a listar/criar/selecionar organizações e gerenciar membros.
@@ -115,6 +116,7 @@ project-sentinel/
 ├── docs/
 │   ├── architecture-foundation.md
 │   ├── identity.md               # contrato de auth do Prompt 03 (stateless)
+│   ├── monitors.md               # contrato de monitors do Prompt 08
 │   ├── organizations.md          # contrato multi-tenant do Prompt 04
 │   ├── projects.md               # contrato de projetos do Prompt 06
 │   └── services.md               # contrato de serviços do Prompt 07
@@ -132,10 +134,11 @@ project-sentinel/
 │       │   ├── organization/ # multi-tenancy: context/ (TenantContext), model/
 │       │   │                 #   (Organization, Membership, Role), dto/, repository/,
 │       │   │                 #   service/ e web/ (controllers + TenantInterceptor)
-│       │   └── project/      # projetos E serviços: model/ (Project, Service,
+│       │   └── project/      # projetos, serviços E monitors: model/ (Project, Service,
 │       │                     #   ServiceStatus), repository/, dto/, service/ e web/
-│       │                     #   (controllers @TenantScoped)
-│       ├── main/resources/   # application*.yml + Flyway migrations (V1–V6)
+│       │                     #   (controllers @TenantScoped) + monitor/ (Prompt 08) e
+│       │                     #   security/ (guarda SSRF)
+│       ├── main/resources/   # application*.yml + Flyway migrations (V1–V7)
 │       └── test/java/        # testes JUnit 5 + Testcontainers (identity, organization, project, error, health)
 └── frontend/                 # Next.js — login/register/home + organizações e membros
 ```
@@ -179,12 +182,12 @@ Corpo JSON malformado, campo com tipo errado ou parâmetro de caminho fora do ti
 
 Todas as respostas do Spring Security trazem `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY`.
 
-Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md) (auth), [docs/organizations.md](docs/organizations.md) (multi-tenancy), [docs/projects.md](docs/projects.md) (projetos) e [docs/services.md](docs/services.md) (serviços).
+Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md) (auth), [docs/organizations.md](docs/organizations.md) (multi-tenancy), [docs/projects.md](docs/projects.md) (projetos), [docs/services.md](docs/services.md) (serviços) e [docs/monitors.md](docs/monitors.md) (monitors).
 
 ## Documentação de arquitetura
 
-Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, [docs/identity.md](docs/identity.md) para o contrato de autenticação, [docs/organizations.md](docs/organizations.md) para o contrato multi-tenant (organizações, membros e Tenant Context), [docs/projects.md](docs/projects.md) para o contrato de projetos e [docs/services.md](docs/services.md) para o contrato de serviços.
+Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, [docs/identity.md](docs/identity.md) para o contrato de autenticação, [docs/organizations.md](docs/organizations.md) para o contrato multi-tenant (organizações, membros e Tenant Context), [docs/projects.md](docs/projects.md) para o contrato de projetos, [docs/services.md](docs/services.md) para o contrato de serviços e [docs/monitors.md](docs/monitors.md) para o contrato de monitors.
 
 ---
 
-**Prompt 07 de 18 — Services (serviços de um projeto).** Coleta de dados de saúde, alertas e incidentes NÃO existem ainda.
+**Prompt 08 de 18 — Monitors (configuração de monitoramento de um serviço).** Coleta de dados de saúde, alertas e incidentes NÃO existem ainda.

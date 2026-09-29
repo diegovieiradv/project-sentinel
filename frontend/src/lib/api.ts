@@ -996,3 +996,253 @@ export async function activateService(
     }
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Monitors (Prompt 08)                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Tipo de monitor — o contrato de hoje só admite `HTTP` (a execução/resultado
+ * do monitor é assunto de outro prompt; aqui só o cadastro e o ciclo de vida).
+ */
+export type MonitorType = "HTTP";
+
+/** Método HTTP permitido no contrato de monitor. */
+export type MonitorMethod = "GET" | "HEAD";
+
+/** Resposta de monitor do backend (contrato de `MonitorResponse`). */
+export interface MonitorResponse {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  serviceId: string;
+  name: string;
+  /** Tipo do monitor — hoje sempre `HTTP`. */
+  type: MonitorType;
+  url: string;
+  method: MonitorMethod;
+  /** Intervalo entre checks agendados, em segundos (30..86400). */
+  intervalSeconds: number;
+  /** Timeout de cada check, em milissegundos (100..30000). */
+  timeoutMillis: number;
+  /**
+   * Ciclo de vida do cadastro (ativado/desativado) — NÃO é um status
+   * operacional de execução (não existe resultado/uptime neste contrato).
+   */
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Papel do usuário autenticado NA organização dona do serviço. */
+  role: OrganizationRole;
+}
+
+/**
+ * Corpo de criação — APENAS campos editáveis: `name`/`url` obrigatórios e
+ * `method`/`intervalSeconds`/`timeoutMillis` opcionais (o backend aplica os
+ * defaults `GET`, `60` e `5000`). id, organizationId, projectId, serviceId,
+ * type, active e timestamps NUNCA entram no body.
+ */
+export interface MonitorCreateRequest {
+  name: string;
+  url: string;
+  method?: MonitorMethod;
+  intervalSeconds?: number;
+  timeoutMillis?: number;
+}
+
+/** Corpo de edição (PATCH) — parcial: campos ausentes permanecem inalterados. */
+export interface MonitorUpdateRequest {
+  name?: string;
+  url?: string;
+  method?: MonitorMethod;
+  intervalSeconds?: number;
+  timeoutMillis?: number;
+}
+
+/**
+ * Corpo do PATCH `.../monitors/{monitorId}/activation` — idempotente.
+ * Desativar é permitido mesmo com o serviço/projeto pai inativo (fail-safe);
+ * ativar com o pai inativo devolve **409**.
+ */
+export interface MonitorActivationRequest {
+  active: boolean;
+}
+
+/**
+ * Parâmetros da listagem de monitors (Spring Page). `undefined`/string vazia é
+ * omitido da query string; boolean vira `"true"`/`"false"`; `method` filtra o
+ * método HTTP (`GET`/`HEAD`).
+ */
+export interface MonitorListParams {
+  page?: number;
+  size?: number;
+  active?: boolean;
+  method?: MonitorMethod;
+  name?: string;
+  sort?: string;
+}
+
+/** Página Spring (`Page<MonitorResponse>`): fatia atual + totais. */
+export interface MonitorPage {
+  content: MonitorResponse[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
+/**
+ * Monta a query string da listagem de monitors (helper puro — testável sem rede).
+ *
+ * Regras: `undefined` e string vazia são omitidos (nunca `page=undefined`);
+ * boolean serializa como `"true"`/`"false"`; números entram decimais (`page=0`
+ * inclusive). Ordem fixa: page, size, active, method, name, sort. Retorna `""`
+ * sem params.
+ */
+export function buildMonitorListParams(params?: MonitorListParams): string {
+  if (!params) return "";
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.size !== undefined) query.set("size", String(params.size));
+  if (params.active !== undefined) query.set("active", String(params.active));
+  if (params.method) query.set("method", params.method);
+  if (params.name) query.set("name", params.name);
+  if (params.sort) query.set("sort", params.sort);
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * Body de monitor com APENAS os campos informados — nunca id, organizationId,
+ * projectId, serviceId, type, active ou timestamps (o backend os preenche a
+ * partir do path/autenticação).
+ */
+function monitorRequestBody(
+  request: MonitorUpdateRequest
+): MonitorUpdateRequest {
+  const body: MonitorUpdateRequest = {};
+  if (request.name !== undefined) body.name = request.name;
+  if (request.url !== undefined) body.url = request.url;
+  if (request.method !== undefined) body.method = request.method;
+  if (request.intervalSeconds !== undefined) {
+    body.intervalSeconds = request.intervalSeconds;
+  }
+  if (request.timeoutMillis !== undefined) body.timeoutMillis = request.timeoutMillis;
+  return body;
+}
+
+/**
+ * GET /api/v1/organizations/{organizationId}/projects/{projectId}/services/
+ * {serviceId}/monitors → **200** página Spring. Query: `page` (default 0),
+ * `size` (default 20, máx 100), `sort` (default do server: `createdAt,asc`),
+ * `active=true|false`, `method=GET|HEAD` e `name` (busca).
+ * **403** papel insuficiente | **404** serviço/projeto/org inexistente.
+ *
+ * O path já carrega a org, então o `apiFetch` NÃO injeta `X-Organization-Id`
+ * (o `TenantInterceptor` do backend valida o path — mandar header divergente
+ * abriria 404). Leitura funciona mesmo com o serviço/projeto pai inativo.
+ */
+export async function listMonitors(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  params?: MonitorListParams
+): Promise<MonitorPage> {
+  return apiFetch<MonitorPage>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/monitors${buildMonitorListParams(params)}`
+  );
+}
+
+/**
+ * GET .../services/{serviceId}/monitors/{monitorId} → **200** monitor |
+ * **404** inexistente/outro tenant.
+ */
+export async function getMonitor(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  monitorId: string
+): Promise<MonitorResponse> {
+  return apiFetch<MonitorResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/monitors/${monitorId}`
+  );
+}
+
+/**
+ * POST .../services/{serviceId}/monitors → **201** monitor criado
+ * (defaults: `GET`, 60s, 5000ms, `type=HTTP`, `active=true`).
+ * Body APENAS campos editáveis. **400** `VALIDATION_ERROR` ou
+ * **400** `MONITOR_TARGET_NOT_ALLOWED` (alvo recusado por segurança — o
+ * cliente nunca tenta contornar) | **403** papel insuficiente |
+ * **409** `MONITOR_NAME_DUPLICATE`, `PROJECT_INACTIVE` ou `SERVICE_INACTIVE`.
+ */
+export async function createMonitor(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  request: MonitorCreateRequest
+): Promise<MonitorResponse> {
+  return apiFetch<MonitorResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/monitors`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(monitorRequestBody(request)),
+    }
+  );
+}
+
+/**
+ * PATCH .../monitors/{monitorId} → **200** monitor atualizado. Body parcial:
+ * só o que for informado muda. **400** `VALIDATION_ERROR` ou
+ * **400** `MONITOR_TARGET_NOT_ALLOWED` | **403** papel insuficiente |
+ * **404** inexistente | **409** `MONITOR_NAME_DUPLICATE`,
+ * `PROJECT_INACTIVE` ou `SERVICE_INACTIVE`.
+ */
+export async function updateMonitor(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  monitorId: string,
+  request: MonitorUpdateRequest
+): Promise<MonitorResponse> {
+  return apiFetch<MonitorResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/monitors/${monitorId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(monitorRequestBody(request)),
+    }
+  );
+}
+
+/**
+ * PATCH .../monitors/{monitorId}/activation → **200** monitor com o novo
+ * `active` (idempotente) — NÃO executa nada e NÃO mexe em resultado/uptime.
+ * **403** papel insuficiente | **404** inexistente |
+ * **409** `SERVICE_INACTIVE`/`PROJECT_INACTIVE` ao ATIVAR com o pai inativo
+ * (desativar continua permitido — fail-safe do backend).
+ */
+export async function activateMonitor(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  monitorId: string,
+  active: boolean
+): Promise<MonitorResponse> {
+  const body: MonitorActivationRequest = { active };
+  return apiFetch<MonitorResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/monitors/${monitorId}/activation`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+}

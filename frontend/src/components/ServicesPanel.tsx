@@ -14,6 +14,7 @@ import {
   type ServiceStatus,
 } from "@/lib/api";
 import { handleUnauthorized, isUnauthorized, messageOf } from "@/lib/errors";
+import MonitorsPanel from "@/components/MonitorsPanel";
 
 type ServicesStatus = "idle" | "loading" | "ready" | "error";
 
@@ -594,6 +595,11 @@ export default function ServicesPanel({
                                 Read-only — your role cannot edit services.
                               </p>
                             )}
+
+                            {/* Monitors do serviço expandido (Prompt 08) —
+                                monta/desmonta com o serviço (`key={service.id}`),
+                                então o estado nasce limpo por serviço. */}
+                            <MonitorsPanel key={service.id} service={service} />
                           </div>
                         </td>
                       </tr>

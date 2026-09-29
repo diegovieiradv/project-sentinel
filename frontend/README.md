@@ -2,7 +2,7 @@
 
 SPA em **Next.js 16 (App Router)** que consome a API do backend Spring Boot em
 `http://localhost:8080`. Telas: home (sessão + organizações, membros,
-**projetos** e **serviços**), login e register. O backend é sempre a autoridade de
+**projetos**, **serviços** e **monitors**), login e register. O backend é sempre a autoridade de
 autenticação e de tenant — o que existe aqui é apenas estado de UI.
 
 **Stack:** Next.js 16.3.6 · React 19 · TypeScript 5 · Tailwind CSS 4 · ESLint 9 · Vitest 3
@@ -40,6 +40,13 @@ backend `8080`, PostgreSQL `5433` (docker-compose na raiz do repositório).
 
 Toda a lógica fica em [`src/lib/api.ts`](src/lib/api.ts).
 
+> **Nota de arquitetura (Prompt 08 — Opção A):** `src/lib/api.ts` continua como
+> um único módulo **aditivo** (~1.250 linhas após os monitors, diff 100% “+”).
+> A decisão registrada pelo Planner foi não modularizar agora: os testes já são
+> por domínio (`api/projects/services/monitors.test.ts`) e uma extração de
+> módulos arriscaria `apiFetch`/CSRF/contratos sem benefício imediato.
+> Reavaliar se o arquivo passar de **~1.500 linhas**.
+
 ## Projetos (Prompt 06)
 
 Seção de projetos na home, visível apenas com organização selecionada: lista
@@ -66,13 +73,34 @@ UI, e **403** vira mensagem — nunca logout. Cliente: `listServices`,
 `createService`, `getService`, `updateService` e `activateService` em
 [`src/lib/api.ts`](src/lib/api.ts).
 
+## Monitors (Prompt 08)
+
+Monitors ficam **dentro do serviço expandido** (organização ativa → projetos →
+projeto expandido → serviços → linha de detalhe do serviço → `MonitorsPanel`),
+montados com `key={service.id}` para o estado nascer limpo por serviço. Lista
+paginada (anterior/próxima + total), busca por nome com debounce, filtros de
+ativação e de método, criação `{name, url, method?, intervalSeconds?,
+timeoutMillis?}` (defaults `GET`/60s/5000ms, limites 30–86400s e 100–30000ms
+mostrados como dica), edição inline e ativar/desativar via
+`PATCH .../monitors/{monitorId}/activation` (**idempotente** — só o ciclo de
+vida `active`; sem run, resultado, latência, uptime ou status de check: nada
+disso é simulado aqui). Badges são só `active`/`Inactive`, `GET`/`HEAD` e
+`HTTP`. Alvo recusado pelo backend (**400** `MONITOR_TARGET_NOT_ALLOWED`) vira
+mensagem fixa “This target is not allowed for security reasons.”, sem expor
+ranges/detalhes; **409** `MONITOR_NAME_DUPLICATE`/`PROJECT_INACTIVE`/
+`SERVICE_INACTIVE` aparecem no form/aviso (serviço pai inativo: criar, editar e
+ativar são rejeitados pelo servidor, **desativar segue permitido**); **403**
+vira mensagem — nunca logout. Cliente: `listMonitors`, `getMonitor`,
+`createMonitor`, `updateMonitor` e `activateMonitor` (mais o helper puro
+`buildMonitorListParams`) em [`src/lib/api.ts`](src/lib/api.ts).
+
 ## Estrutura
 
 ```
 src/
-├── app/            # rotas: page.tsx (home: sessão, organizações, membros, projetos e serviços), login/, register/
-├── components/     # AuthStatus (sessão), HealthStatus (backend up?), ServicesPanel (serviços do projeto)
-└── lib/            # api.ts (cliente) + errors.ts (helpers de erro) + api/projects/services.test.ts (vitest)
+├── app/            # rotas: page.tsx (home: sessão, organizações, membros, projetos, serviços e monitors), login/, register/
+├── components/     # AuthStatus (sessão), HealthStatus (backend up?), ServicesPanel (serviços do projeto), MonitorsPanel (monitors do serviço)
+└── lib/            # api.ts (cliente) + errors.ts (helpers de erro) + api/projects/services/monitors.test.ts (vitest)
 ```
 
 Documentação do projeto: [README raiz](../README.md) e [docs/](../docs/)

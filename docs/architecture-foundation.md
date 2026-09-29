@@ -1,6 +1,6 @@
 # Fundação da arquitetura — Sentinel
 
-> Prompt 01 de 18 (atualizado nos **Prompt 02 — Identity**, **Prompt 03 — Identity stateless**, **Prompt 04 — Multi-tenancy**, **Prompt 05 — Tenant Security**, **Prompt 06 — Projects** e **Prompt 07 — Services**). Este documento descreve **decisões e fronteiras planejadas**; apenas o que estiver indicado como "construído" existe hoje no código.
+> Prompt 01 de 18 (atualizado nos **Prompt 02 — Identity**, **Prompt 03 — Identity stateless**, **Prompt 04 — Multi-tenancy**, **Prompt 05 — Tenant Security**, **Prompt 06 — Projects**, **Prompt 07 — Services** e **Prompt 08 — Monitors**). Este documento descreve **decisões e fronteiras planejadas**; apenas o que estiver indicado como "construído" existe hoje no código.
 
 ## 1. Decisões arquiteturais
 
@@ -15,12 +15,13 @@
 
 ## 2. Fronteiras modulares (construídas × planejadas)
 
-As fronteiras **identity**, **organizations**, **projects** e **services** já existem como código. As demais **não existem como código nem como pastas vazias** — são apenas o mapa previsto:
+As fronteiras **identity**, **organizations**, **projects**, **services** e **monitors** já existem como código. As demais **não existem como código nem como pastas vazias** — são apenas o mapa previsto:
 
 - **identity** — ⚠️ **parcialmente construída nos Prompt 02 e 03**: usuários, credenciais (BCrypt) e autenticação *stateless* (`register`/`login`/`refresh`/`logout`/`me`, access token JWT + refresh token em cookie, CSRF, CORS). Ainda **faltam**: permissões por recurso além dos papéis de organização.
 - **organizations** — ✅ **construída no Prompt 04**: tenants da plataforma — `Organization`, `Membership`, papéis por organização (`ADMIN`/`OPERATOR`/`VIEWER`), gestão de membros e resolução de contexto de tenant (`TenantContext` + `TenantInterceptor` + `@TenantScoped`). Contrato em [organizations.md](organizations.md).
 - **projects** — ✅ **construída no Prompt 06**: agrupamento lógico dentro de uma organização — tabela `projects` (migration `V5`), pacote `com.sentinel.project` (entidade, repositório, DTOs, service e controller), unicidade de nome por organização em duas camadas, ativação/desativação idempotente. Herda o contexto de tenant já resolvido (não recria filtro, interceptor nem regra de segurança). Contrato em [projects.md](projects.md). **Ambientes** continuam **planejados**.
 - **services** — ✅ **construída no Prompt 07**: catálogo dos serviços de um projeto — tabela `services` (migration `V6`), entidades `Service`/`ServiceStatus` no **mesmo** pacote `com.sentinel.project` (sub-recurso, não pacote novo), unicidade de nome **por projeto** em duas camadas, ativação/desativação idempotente e dois eixos independentes (`active` = catálogo, `status` = observação, inalterável por endpoint). A autorização encadeia Organization → Project → Service em duas consultas tenant-scoped (nunca `findById` avulso). Contrato em [services.md](services.md). **Coleta de dados de saúde, alertas e incidentes** continuam **planejados**.
+- **monitors** — ✅ **construída no Prompt 08**: quarto nível da hierarquia (Organization → Project → Service → Monitor) — tabela `monitors` (migration `V7`), sub-pacote `com.sentinel.project.monitor` (entidade, repositório, DTOs, service e controller) + guarda SSRF em `com.sentinel.project.security`, unicidade de nome **por serviço** em duas camadas, ativação/desativação idempotente, alvo privado recusado **antes de persistir** e autorização encadeada em **três consultas** tenant-scoped. Contrato em [monitors.md](monitors.md). **Execução das checagens, resultados e status operacional** continuam **planejados**.
 - **monitoring** — coleta e estado de saúde dos serviços: checks, métricas, janelas de observação e sinais de falha.
 - **alerting** — regras e decisões de alerta: condições, thresholds, supressões e disparo de notificações futuras.
 - **incidents** — ciclo de vida de incidentes: abertura, triagem, atualização, resolução e histórico.
@@ -37,28 +38,33 @@ graph TB
     INTER --> ORG[organization<br/>✅ Prompt 04/05]
     INTER --> PRJ[project<br/>✅ Prompt 06]
     INTER --> SVC[services<br/>✅ Prompt 07]
+    INTER --> MONIT[monitors<br/>✅ Prompt 08]
     ORG -->|papéis ADMIN/OPERATOR/VIEWER| TC
     PRJ -->|lê papel semântico| TC
     SVC -->|lê papel semântico| TC
+    MONIT -->|lê papel semântico| TC
     PRJ -->|1 -- * serviços| SVC
+    SVC -->|1 -- * monitores| MONIT
     SVC -.planejado.-> MON[monitoring]
     MON -.planejado.-> ALT[alerting]
     MON -.planejado.-> INC[incidents]
 ```
 
-Hierarquia de dados do tenant (a cardinalidade é a regra do Prompt 07: um projeto tem de zero a N serviços e cada serviço pertence a exatamente um projeto):
+Hierarquia de dados do tenant (a cardinalidade é a regra do Prompt 08: um serviço tem de zero a N monitores e cada monitor pertence a exatamente um serviço):
 
 ```mermaid
 erDiagram
     ORGANIZATION ||--o{ PROJECT : "tem"
     PROJECT ||--o{ SERVICE : "possui"
+    SERVICE ||--o{ MONITOR : "possui"
 ```
 
-Cardinalidade lida no diagrama: `PROJECT ||--o{ SERVICE` = **Project 1 → \* Service** (zero a N serviços por projeto; cada serviço, exatamente um projeto).
+Cardinalidade lida no diagrama: `PROJECT ||--o{ SERVICE` = **Project 1 → \* Service** (zero a N serviços por projeto; cada serviço, exatamente um projeto) e `SERVICE ||--o{ MONITOR` = **Service 1 → \* Monitor** (zero a N monitores por serviço; cada monitor, exatamente um serviço).
 
 - `organizations.id` → `projects.organization_id` (`ON DELETE CASCADE`);
 - `projects.id` → `services.project_id` (**`ON DELETE RESTRICT`** — a linha de serviço é histórico do projeto, diferente do `CASCADE` dos dois níveis acima);
-- a unicidade é **`UNIQUE (project_id, name_normalized)`**: por projeto, não global.
+- `services.id` → `monitors.service_id` (**`ON DELETE RESTRICT`** — a linha de monitor é a configuração declarativa do serviço);
+- a unicidade de serviços é **`UNIQUE (project_id, name_normalized)`**: por projeto, não global; a de monitores é **`UNIQUE (service_id, name_normalized)`**: por serviço, não global (inclusive sobre linhas inativas).
 
 ## 3. Diagrama da fundação construída
 
@@ -79,9 +85,10 @@ O que existe hoje no backend:
 - **Prompt 05**: tenant security sem mudança de contrato — a autoridade é consultada no servidor **por requisição** (papel nunca em JWT: promoção/rebaixamento/remoção valem sem refresh), a matriz de ataques IDOR (`GET`/`POST`/`PATCH`/`DELETE` cross-tenant, `membershipId` de outro tenant ou aleatório, path × header divergente) responde o mesmo `404` genérico sem efeito colateral, a regra do último ADMIN é coberta sob concorrência (`PATCH × PATCH`, `PATCH × DELETE` e dois ADMINs em corrida), corpo/parâmetro inválido vira `400` genérico, origens CORS são validadas no startup e os headers de segurança padrão ficam verificados. **Sem migrations novas.**
 - **Prompt 06**: primeiro recurso de domínio do tenant — `POST`/`GET /api/v1/organizations/{organizationId}/projects`, `GET`/`PATCH .../projects/{projectId}` e `PATCH .../projects/{projectId}/status` (leitura para qualquer papel, mutação para `ADMIN`/`OPERATOR` via `TenantContext.role()`), unicidade de nome por organização em **duas camadas** (pré-check → `409` + `UNIQUE (organization_id, name_normalized)` traduzido no mesmo `409`, nunca `500`), listagem paginada com filtros `active`/`name`, ordenação por allowlist (`createdAt`/`name`/`id`) com desempate por `id`, `DELETE` → `405`, tabela `projects` (`V5`) — contrato em [projects.md](projects.md).
 - **Prompt 07**: segundo nível da hierarquia (Organization → Project → Service) — `POST`/`GET .../projects/{projectId}/services`, `GET`/`PATCH .../services/{serviceId}` e `PATCH .../services/{serviceId}/activation` (mesma matriz de papéis do Prompt 06), autorização encadeada em **duas consultas** (`findByOrganizationIdAndId` + `findByProjectIdAndId`, nunca `findById` avulso), unicidade de nome **por projeto** em duas camadas (`409 SERVICE_NAME_DUPLICATE` inclusive sob concorrência), listagem com filtros combináveis `active`/`status`/`name`, projeto inativo → leitura `200` × mutação `409 PROJECT_INACTIVE`, `status` como eixo de servidor **sem endpoint de alteração**, `DELETE` → `405`, tabela `services` (`V6`) — contrato em [services.md](services.md).
+- **Prompt 08**: terceiro nível da hierarquia (Organization → Project → Service → Monitor) — `POST`/`GET .../services/{serviceId}/monitors`, `GET`/`PATCH .../monitors/{monitorId}` e `PATCH .../monitors/{monitorId}/activation` (mesma matriz de papéis dos Prompts 06/07), autorização encadeada em **três consultas** (`findByOrganizationIdAndId` + `findByProjectIdAndId` + `findByServiceIdAndId`, nunca `findById` avulso), unicidade de nome **por serviço** em duas camadas (`409 MONITOR_NAME_DUPLICATE` inclusive sob concorrência), listagem com filtros combináveis `active`/`method`/`name`, serviço inativo → leitura `200` × mutação `409 PROJECT_INACTIVE`/`409 SERVICE_INACTIVE` com desativação **fail-safe**, `type=HTTP` como eixo de servidor **sem endpoint de alteração**, alvo privado/loopback recusado **antes de persistir** (`SsrfGuard` → `400 MONITOR_TARGET_NOT_ALLOWED`, revalidado também na reativação `false → true`), `DELETE` → `405`, tabela `monitors` (`V7`) — contrato em [monitors.md](monitors.md).
 - CORS liberado para `http://localhost:3000` com credenciais — **fonte única**: `SecurityConfig.corsConfigurationSource`, origens configuráveis via `app.cors.allowed-origins` (o antigo `WebMvcConfig` foi removido no Prompt 02); desde o Prompt 04 os métodos incluem `PATCH` e os headers incluem `X-Organization-Id`; desde o **Prompt 05** a lista é **validada no startup** (curinga com `allowCredentials=true` derruba a subida) e as respostas trazem `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY` (defaults do Spring Security).
 - Bean assíncrono (`taskExecutor`) como base futura de processamento assíncrono.
-- Flyway: `V1__init_schema.sql` (fundação) + `V2__create_users_table.sql` (identity) + `V3__create_refresh_tokens_table.sql` (refresh tokens) + `V4__create_organizations_and_memberships.sql` (multi-tenancy) + `V5__create_projects_table.sql` (projetos, Prompt 06) + `V6__create_services_table.sql` (serviços, Prompt 07) — **o Prompt 05 não acrescenta migrations**; o Prompt 07 acrescenta exatamente uma.
+- Flyway: `V1__init_schema.sql` (fundação) + `V2__create_users_table.sql` (identity) + `V3__create_refresh_tokens_table.sql` (refresh tokens) + `V4__create_organizations_and_memberships.sql` (multi-tenancy) + `V5__create_projects_table.sql` (projetos, Prompt 06) + `V6__create_services_table.sql` (serviços, Prompt 07) + `V7__create_monitors_table.sql` (monitores, Prompt 08) — **o Prompt 05 não acrescenta migrations**; os Prompts 07 e 08 acrescentam exatamente uma cada.
 
 ## 4. Configuração por ambientes
 
@@ -106,9 +113,10 @@ Segredos nunca ficam no código: usa-se `.env` (gitignored) a partir de `.env.ex
 - **Backend (Prompt 04)**: `/api/v1/organizations` autenticado por Bearer (+ CSRF nos métodos não-safe); o detalhe e todos os endpoints de membros são `@TenantScoped` — o `TenantInterceptor` valida a membership **antes** do handler e devolve 404 genérico a não-membros; `/members` exige `ADMIN` no service (papel lido do `TenantContext`, nunca de JWT).
 - **Backend (Prompt 06)**: os endpoints de projetos herdam exatamente a mesma cadeia — Bearer, CSRF nos métodos não-safe, `@TenantScoped` no path `{organizationId}` e papel lido do `TenantContext`; a listagem devolve `Page` no formato `{content, totalElements, totalPages, number, size}` (mesma forma que o cliente de projetos já consome).
 - **Backend (Prompt 07)**: os endpoints de serviços ficam **dentro** da rota do projeto (`.../projects/{projectId}/services`) e herdam a mesma cadeia — Bearer, CSRF nos métodos não-safe, `@TenantScoped` e papel do `TenantContext`; `projectId` e `serviceId` são parseados manualmente no controller (UUID inválido → o mesmo `404` genérico, nunca `400`/`500`); a listagem devolve o **mesmo** formato de `Page` do Prompt 06, agora com o filtro adicional `status`.
+- **Backend (Prompt 08)**: os endpoints de monitores ficam **dentro** da rota do serviço (`.../services/{serviceId}/monitors`) e herdam a mesma cadeia — Bearer, CSRF nos métodos não-safe, `@TenantScoped` e papel do `TenantContext`; `projectId`, `serviceId` e `monitorId` são parseados manualmente no controller (UUID inválido → o mesmo `404` genérico, nunca `400`/`500`); a listagem devolve o **mesmo** formato de `Page` do Prompt 06, agora com os filtros `active`/`method`/`name` e `method` tipado como enum (valor fora de `GET`/`HEAD` → `400` `"Invalid request parameter"`, nunca `500`); o corpo de criação passa por `@Valid` (o `PATCH` valida no service, para distinguir ausente de em branco) e a rota de ativação exige `Boolean` não-nulo.
 - **Frontend (Prompt 04)**: a home lista/cria/seleciona organizações (org ativa persistida em `localStorage` sob `sentinel.activeOrganizationId`) e gerencia membros (adicionar, alterar papel, remover) quando o papel do usuário é `ADMIN`; a seção de organizações só carrega depois que a sessão está confirmada (callback `onAuthStateChange` do `AuthStatus`), evitando corrida com o bootstrap do refresh.
 - CORS no backend permite a lista de origens de `app.cors.allowed-origins` (default `http://localhost:3000`) com `GET, POST, PUT, PATCH, DELETE, OPTIONS`, `Content-Type`, `Authorization`, `X-XSRF-TOKEN`, `X-Organization-Id`, `Accept` e `allowCredentials=true`, configurado unicamente no `SecurityConfig`.
 
 ## 6. Fora do escopo desta fundação
 
-Entidades de domínio Monitor, Alert e Incident, scheduler, dashboards, notificações, trilha de auditoria e permissões por recurso **não existem** e serão endereçados nos prompts futuros. (Auth entrou no Prompt 02 — sessão transitória — e foi migrada para JWT/refresh no Prompt 03, com o frontend adaptado ao mesmo contrato — ver [identity.md](identity.md); multi-tenancy entrou no Prompt 04 — ver [organizations.md](organizations.md); o primeiro recurso de domínio (projetos) entrou no Prompt 06 — ver [projects.md](projects.md); os serviços de um projeto entraram no Prompt 07 — ver [services.md](services.md).)
+Entidades de domínio Alert e Incident, execução de checagens (scheduler, resultados, séries temporais e status operacional dos monitores), dashboards, notificações, trilha de auditoria e permissões por recurso **não existem** e serão endereçados nos prompts futuros. (Auth entrou no Prompt 02 — sessão transitória — e foi migrada para JWT/refresh no Prompt 03, com o frontend adaptado ao mesmo contrato — ver [identity.md](identity.md); multi-tenancy entrou no Prompt 04 — ver [organizations.md](organizations.md); o primeiro recurso de domínio (projetos) entrou no Prompt 06 — ver [projects.md](projects.md); os serviços de um projeto entraram no Prompt 07 — ver [services.md](services.md); a configuração de monitoramento de um serviço entrou no Prompt 08 — ver [monitors.md](monitors.md).)
