@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.sentinel.project.monitor.model.Monitor;
+import com.sentinel.project.monitor.repository.MonitorCheckRepository;
 import com.sentinel.project.monitor.repository.MonitorRepository;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,9 @@ public abstract class AbstractMonitorIntegrationTest extends AbstractServiceInte
     @Autowired
     protected MonitorRepository monitorRepository;
 
+    @Autowired
+    protected MonitorCheckRepository monitorCheckRepository;
+
     // --- URLs ---------------------------------------------------------------
 
     protected String monitorsUrl(String organizationId, String projectId, String serviceId) {
@@ -52,6 +56,11 @@ public abstract class AbstractMonitorIntegrationTest extends AbstractServiceInte
     protected String monitorUrl(
             String organizationId, String projectId, String serviceId, String monitorId) {
         return monitorsUrl(organizationId, projectId, serviceId) + "/" + monitorId;
+    }
+
+    protected String monitorChecksUrl(
+            String organizationId, String projectId, String serviceId, String monitorId) {
+        return monitorUrl(organizationId, projectId, serviceId, monitorId) + "/checks";
     }
 
     protected String monitorActivationUrl(

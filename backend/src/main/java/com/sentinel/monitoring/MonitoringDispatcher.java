@@ -42,8 +42,15 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>Contadores</b> ({@link AtomicLong}): {@code dispatched} (aceitos),
  * {@code saturated} (recusados por fila cheia) e {@code internalErrors}
- * (exceções que escaparam do executor + resultados
- * {@code SENTINEL_INTERNAL_FAILURE}). Falhas de alvo não entram aqui.</p>
+ * (exceções que escaparam do executor, resultados
+ * {@code SENTINEL_INTERNAL_FAILURE} e falhas das etapas de persistência /
+ * avaliação de estado do Prompt 10 — tudo do NOSSO lado). Falhas de alvo não
+ * entram aqui.</p>
+ *
+ * <p><b>Dependências do pipeline (Prompt 10):</b> este bean injeta
+ * {@link MonitorCheckRecorder} e {@link OperationalStateEvaluator} apenas
+ * para repassá-los à {@link MonitorExecutionTask} — quem executa o trabalho
+ * é a task, na própria thread do pool, com fronteira de exceção por etapa.</p>
  */
 @Component
 public class MonitoringDispatcher {
@@ -68,6 +75,8 @@ public class MonitoringDispatcher {
 
     private final ThreadPoolTaskExecutor taskExecutor;
     private final HttpMonitorExecutor monitorExecutor;
+    private final MonitorCheckRecorder recorder;
+    private final OperationalStateEvaluator evaluator;
     private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
 
     private final AtomicLong dispatchedCount = new AtomicLong();
@@ -75,8 +84,13 @@ public class MonitoringDispatcher {
     private final AtomicLong internalErrorCount = new AtomicLong();
 
     public MonitoringDispatcher(
-            MonitoringProperties properties, HttpMonitorExecutor monitorExecutor) {
+            MonitoringProperties properties,
+            HttpMonitorExecutor monitorExecutor,
+            MonitorCheckRecorder recorder,
+            OperationalStateEvaluator evaluator) {
         this.monitorExecutor = monitorExecutor;
+        this.recorder = recorder;
+        this.evaluator = evaluator;
         this.taskExecutor = createTaskExecutor(properties);
     }
 
@@ -112,7 +126,8 @@ public class MonitoringDispatcher {
             return DispatchOutcome.IN_FLIGHT;
         }
         try {
-            taskExecutor.execute(new MonitorExecutionTask(monitor, monitorExecutor, this));
+            taskExecutor.execute(
+                    new MonitorExecutionTask(monitor, monitorExecutor, this, recorder, evaluator));
             dispatchedCount.incrementAndGet();
             return DispatchOutcome.ACCEPTED;
         }

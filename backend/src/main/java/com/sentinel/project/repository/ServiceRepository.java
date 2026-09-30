@@ -6,9 +6,14 @@ import java.util.UUID;
 import com.sentinel.project.model.Service;
 import com.sentinel.project.model.ServiceStatus;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Persistência de serviços (Prompt 07).
@@ -43,6 +48,24 @@ public interface ServiceRepository extends JpaRepository<Service, UUID> {
 
     /** Lookup do detalhe: prova Project → Service. Nunca findById avulso. */
     Optional<Service> findByProjectIdAndId(UUID projectId, UUID serviceId);
+
+    /**
+     * Lock pessimista (SELECT ... FOR UPDATE) da linha do serviço — usado
+     * pelo {@code OperationalStateEvaluator} (Prompt 10) para serializar o
+     * recálculo de {@code status} entre checagens concorrentes do MESMO
+     * serviço: quem segura o lock lê as janelas de checks e decide a
+     * escrita, e o próximo avaliador espera e parte do resultado já
+     * gravado (nunca sobrescreve com estado calculado de janela velha).
+     *
+     * <p>Leitura+lock+escrita acontecem na MESMA transação do avaliador
+     * ({@code REQUIRES_NEW}) — fora disso o lock não protegeria nada.</p>
+     *
+     * @param id serviço a travar
+     * @return a linha travada, ou vazia se o serviço não existe
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Service s where s.id = :id")
+    Optional<Service> findByIdWithLock(@Param("id") UUID id);
 
     /** Pré-check de unicidade (create) — 409 imediato, antes do banco. */
     boolean existsByProjectIdAndNameNormalized(UUID projectId, String nameNormalized);

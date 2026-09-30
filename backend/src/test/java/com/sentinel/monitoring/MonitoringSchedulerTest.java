@@ -2,6 +2,8 @@ package com.sentinel.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.net.ConnectException;
 import java.net.http.HttpRequest;
 import java.time.Duration;
 import java.time.Instant;
@@ -13,6 +15,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import com.sentinel.project.AbstractMonitorIntegrationTest;
+import com.sentinel.project.model.ServiceStatus;
+import com.sentinel.project.monitor.model.CheckOutcome;
+import com.sentinel.project.monitor.model.Monitor;
+import com.sentinel.project.monitor.model.MonitorCheck;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -26,6 +32,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -115,12 +122,33 @@ class MonitoringSchedulerTest extends AbstractMonitorIntegrationTest {
     void resetEngineState() {
         // base limpa por teste: monitores de cenas anteriores não poluem a
         // elegibilidade nem os contadores do tick atual
+        //
+        // O histórico de checagens (Prompt 10) é filho do monitor com
+        // ON DELETE RESTRICT — apagar monitores sem zerar a tabela filha
+        // estouraria em violação de FK, então a limpeza é obrigatoriamente
+        // nessa ordem.
+        monitorCheckRepository.deleteAll();
         monitorRepository.deleteAll();
         // o DueTracker é podado pelo próprio tick (retainOnly), mas o teste
         // do perfil desligado nunca roda um tick — zera explicitamente aqui
         dueTracker.retainOnly(List.of());
         stubTransport.reset();
         clock.reset();
+    }
+
+    // --- helpers dos testes de estado --------------------------------------
+
+    /** Um tick completo: despacha, executa e espera persistir + avaliar. */
+    private void runOneCheck() {
+        assertThat(scheduler.tick()).isEqualTo(1);
+        assertThat(dispatcher.awaitIdle(FIVE_SECONDS))
+                .as("check must have finished (persisted and evaluated)")
+                .isTrue();
+    }
+
+    /** Estado atual do serviço, lido do banco (a avaliação usa transação própria). */
+    private ServiceStatus statusOf(String serviceId) {
+        return serviceRepository.findById(UUID.fromString(serviceId)).orElseThrow().getStatus();
     }
 
     // --- vencimento ---------------------------------------------------------
@@ -299,6 +327,221 @@ class MonitoringSchedulerTest extends AbstractMonitorIntegrationTest {
         assertThat(dispatcher.internalErrorCount()).isEqualTo(internalErrorsBefore + 2);
     }
 
+    // --- Prompt 10: estado operacional -------------------------------------
+
+    @Test
+    void serviceWalksTheWholeStatusTableAndRecovers() throws Exception {
+        Scene scene = newScene("mon-engine-status", "Engine Status");
+        createMonitor(
+                scene.org().ownerBearer(),
+                scene.org().organizationId(),
+                scene.projectId(),
+                scene.serviceId(),
+                "Estado");
+
+        // linha 1: nunca houve evidência alguma
+        assertThat(statusOf(scene.serviceId())).isEqualTo(ServiceStatus.UNKNOWN);
+
+        // saúde total → OPERATIONAL (evidência positiva vale sozinha)
+        stubTransport.respondWith(200);
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId())).isEqualTo(ServiceStatus.OPERATIONAL);
+        clock.advance(INTERVAL);
+
+        // 500 respondido → DEGRADED: existe, mas não funciona
+        stubTransport.respondWith(500);
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId())).isEqualTo(ServiceStatus.DEGRADED);
+        clock.advance(INTERVAL);
+
+        // ninguém responde mais: a janela precisa de 3 inacessíveis CHEIOS
+        stubTransport.failWith(new ConnectException("connection refused"));
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId()))
+                .as("janela [inacessível, 500, 200] ainda é degradação")
+                .isEqualTo(ServiceStatus.DEGRADED);
+        clock.advance(INTERVAL);
+
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId()))
+                .as("janela [inacessível, inacessível, 500] ainda é degradação")
+                .isEqualTo(ServiceStatus.DEGRADED);
+        clock.advance(INTERVAL);
+
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId()))
+                .as("janela cheia de inacessibilidade = UNAVAILABLE")
+                .isEqualTo(ServiceStatus.UNAVAILABLE);
+        clock.advance(INTERVAL);
+
+        // volta a responder: a janela móvel sai de UNAVAILABLE já no 1º check
+        stubTransport.respondWith(200);
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId())).isEqualTo(ServiceStatus.DEGRADED);
+        clock.advance(INTERVAL);
+
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId())).isEqualTo(ServiceStatus.DEGRADED);
+        clock.advance(INTERVAL);
+
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId())).isEqualTo(ServiceStatus.OPERATIONAL);
+    }
+
+    @Test
+    void threeHttpErrorsKeepTheServiceDegradedAndNeverUnavailable() throws Exception {
+        Scene scene = newScene("mon-engine-http500", "Engine Http 500");
+        createMonitor(
+                scene.org().ownerBearer(),
+                scene.org().organizationId(),
+                scene.projectId(),
+                scene.serviceId(),
+                "Erro 500");
+
+        stubTransport.respondWith(500);
+        for (int i = 0; i < 3; i++) {
+            runOneCheck();
+            clock.advance(INTERVAL);
+        }
+
+        assertThat(statusOf(scene.serviceId()))
+                .as("janela cheia de erro respondido = DEGRADED (o alvo responde)")
+                .isEqualTo(ServiceStatus.DEGRADED);
+        assertThat(monitorCheckRepository.count()).isEqualTo(3);
+    }
+
+    @Test
+    void redirectWindowPersistsDegradedSignalChecksAndDegradedService() throws Exception {
+        Scene scene = newScene("mon-engine-302", "Engine 302");
+        String monitorId = createMonitor(
+                scene.org().ownerBearer(),
+                scene.org().organizationId(),
+                scene.projectId(),
+                scene.serviceId(),
+                "Redirecionamento");
+
+        stubTransport.respondWith(302);
+        for (int i = 0; i < 3; i++) {
+            runOneCheck();
+            clock.advance(INTERVAL);
+        }
+
+        assertThat(statusOf(scene.serviceId()))
+                .as("3xx nunca é seguido pelo motor → sinal de degradação")
+                .isEqualTo(ServiceStatus.DEGRADED);
+
+        List<MonitorCheck> persisted = monitorCheckRepository
+                .findByMonitorIdOrderByStartedAtDesc(UUID.fromString(monitorId), PageRequest.of(0, 10))
+                .getContent();
+        assertThat(persisted).hasSize(3);
+        assertThat(persisted)
+                .allSatisfy(check -> {
+                    assertThat(check.getOutcome()).isEqualTo(CheckOutcome.DEGRADED_SIGNAL);
+                    assertThat(check.getFailureCategory()).isNull();
+                    assertThat(check.getHttpStatus()).isEqualTo(302);
+                });
+    }
+
+    @Test
+    void internalFailuresArePersistedButNeverMoveTheServiceStatus() throws Exception {
+        Scene scene = newScene("mon-engine-internal", "Engine Internal");
+        String monitorId = createMonitor(
+                scene.org().ownerBearer(),
+                scene.org().organizationId(),
+                scene.projectId(),
+                scene.serviceId(),
+                "Interna");
+
+        // cenário A — serviço NOVO: só falhas internas do Sentinel. A janela
+        // de avaliação as exclui, a evidência fica vazia e o estado é
+        // UNKNOWN — nunca UNAVAILABLE (janela interna não é "3 inacessíveis")
+        stubTransport.failWith(new IllegalStateException("stub bug"));
+        for (int i = 0; i < 3; i++) {
+            runOneCheck();
+            clock.advance(INTERVAL);
+        }
+        assertThat(statusOf(scene.serviceId()))
+                .as("falha interna não é evidência sobre o alvo")
+                .isEqualTo(ServiceStatus.UNKNOWN);
+
+        // cenário B — serviço já OPERATIONAL ganha UMA falha interna: a
+        // saúde provada não é derrubada por check do nosso lado
+        stubTransport.respondWith(200);
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId())).isEqualTo(ServiceStatus.OPERATIONAL);
+        clock.advance(INTERVAL);
+
+        stubTransport.failWith(new IllegalStateException("stub bug"));
+        runOneCheck();
+        assertThat(statusOf(scene.serviceId()))
+                .as("check interno não tira o serviço de OPERATIONAL")
+                .isEqualTo(ServiceStatus.OPERATIONAL);
+
+        // as 5 execuções viraram linha — inclusive as internas (visíveis na
+        // API de histórico, invisíveis para a janela de avaliação)
+        List<MonitorCheck> persisted = monitorCheckRepository
+                .findByMonitorIdOrderByStartedAtDesc(
+                        UUID.fromString(monitorId), PageRequest.of(0, 10))
+                .getContent();
+        assertThat(persisted).hasSize(5);
+        assertThat(persisted)
+                .extracting(MonitorCheck::getOutcome)
+                .containsExactly(
+                        CheckOutcome.SENTINEL_INTERNAL_FAILURE,
+                        CheckOutcome.SUCCESS,
+                        CheckOutcome.SENTINEL_INTERNAL_FAILURE,
+                        CheckOutcome.SENTINEL_INTERNAL_FAILURE,
+                        CheckOutcome.SENTINEL_INTERNAL_FAILURE);
+    }
+
+    // --- append-only --------------------------------------------------------
+
+    @Test
+    void everyExecutionPersistsExactlyOneCheckRow() throws Exception {
+        Scene scene = newScene("mon-engine-count", "Engine Count");
+        String monitorId = createMonitor(
+                scene.org().ownerBearer(),
+                scene.org().organizationId(),
+                scene.projectId(),
+                scene.serviceId(),
+                "Contagem");
+        UUID id = UUID.fromString(monitorId);
+
+        for (int i = 0; i < 3; i++) {
+            runOneCheck();
+            clock.advance(INTERVAL);
+        }
+
+        assertThat(monitorCheckRepository.count()).isEqualTo(3);
+        assertThat(monitorCheckRepository.findByMonitorIdOrderByStartedAtDesc(
+                                id, PageRequest.of(0, 10))
+                        .getContent())
+                .extracting(MonitorCheck::getStartedAt)
+                .containsExactly(T0.plus(INTERVAL).plus(INTERVAL), T0.plus(INTERVAL), T0);
+    }
+
+    @Test
+    void sameStartInstantRowsCoexistBecauseV8HasNoUniqueTimestamp() throws Exception {
+        Scene scene = newScene("mon-engine-dupe", "Engine Dupe");
+        String monitorId = createMonitor(
+                scene.org().ownerBearer(),
+                scene.org().organizationId(),
+                scene.projectId(),
+                scene.serviceId(),
+                "Relógio Congelado");
+        Monitor monitor = monitorOf(scene.serviceId(), monitorId);
+
+        // dois registros com o MESMO (monitor_id, started_at) — o que um
+        // UNIQUE rejeitaria em silêncio e mataria testes com Clock congelado
+        MonitorCheck first = monitorCheckRepository.saveAndFlush(new MonitorCheck(
+                monitor, T0, T0.plusMillis(100), 100, 200, CheckOutcome.SUCCESS, null, "primeiro"));
+        MonitorCheck second = monitorCheckRepository.saveAndFlush(new MonitorCheck(
+                monitor, T0, T0.plusMillis(100), 100, 200, CheckOutcome.SUCCESS, null, "segundo"));
+
+        assertThat(first.getId()).isNotEqualTo(second.getId());
+        assertThat(monitorCheckRepository.count()).isEqualTo(2);
+    }
+
     // --- perfil de teste ----------------------------------------------------
 
     @Test
@@ -354,7 +597,8 @@ class MonitoringSchedulerTest extends AbstractMonitorIntegrationTest {
 
     /**
      * Transporte gravador: nunca conecta; pode ficar "preso" em uma checagem
-     * (latch) para exercitar in-flight e pode falhar sob demanda.
+     * (latch) para exercitar in-flight, devolver QUALQUER status HTTP e pode
+     * falhar sob demanda (checked = rede do alvo; runtime = bug nosso).
      */
     static final class StubHttpTransport implements HttpTransport {
 
@@ -363,18 +607,23 @@ class MonitoringSchedulerTest extends AbstractMonitorIntegrationTest {
         private volatile CountDownLatch entered = new CountDownLatch(0);
         private volatile CountDownLatch release = new CountDownLatch(0);
         private volatile RuntimeException failure;
+        private volatile IOException ioFailure;
+        private volatile Integer responseStatus;
 
         @Override
-        public int send(HttpRequest request) throws InterruptedException {
+        public int send(HttpRequest request) throws IOException, InterruptedException {
             paths.add(request.uri().getPath());
             entered.countDown();
             if (release.getCount() > 0) {
                 release.await(10, TimeUnit.SECONDS);
             }
+            if (ioFailure != null) {
+                throw ioFailure;
+            }
             if (failure != null) {
                 throw failure;
             }
-            return 200;
+            return responseStatus == null ? 200 : responseStatus;
         }
 
         void reset() {
@@ -382,10 +631,27 @@ class MonitoringSchedulerTest extends AbstractMonitorIntegrationTest {
             entered = new CountDownLatch(0);
             release = new CountDownLatch(0);
             failure = null;
+            ioFailure = null;
+            responseStatus = null;
         }
 
+        /** Próximas respostas devolvem este status HTTP (e nenhuma falha). */
+        void respondWith(int httpStatus) {
+            this.responseStatus = httpStatus;
+            this.failure = null;
+            this.ioFailure = null;
+        }
+
+        /** Falha de REDE do alvo (ConnectException, UnknownHostException…). */
+        void failWith(IOException ex) {
+            this.ioFailure = ex;
+            this.failure = null;
+        }
+
+        /** Bug do nosso lado — vira erro interno, não falha do alvo. */
         void failWith(RuntimeException ex) {
             this.failure = ex;
+            this.ioFailure = null;
         }
 
         void block() {

@@ -1246,3 +1246,110 @@ export async function activateMonitor(
     }
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Check history (Prompt 10)                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Desfecho PERSISTIDO de uma checagem (enum `CheckOutcome` do backend).
+ * - `SUCCESS` → 2xx; `DEGRADED_SIGNAL` → 3xx (redirect não seguido);
+ * - `TARGET_FAILURE` → o alvo falhou; `SENTINEL_INTERNAL_FAILURE` → problema
+ *   nosso (proteção SSRF/bug) — nunca é evidência do alvo.
+ */
+export type CheckOutcome =
+  | "SUCCESS"
+  | "DEGRADED_SIGNAL"
+  | "TARGET_FAILURE"
+  | "SENTINEL_INTERNAL_FAILURE";
+
+/**
+ * Por que a checagem falhou (enum `CheckFailureCategory` do backend) — só
+ * existe quando `outcome` é falha; `null` em sucesso/degradado.
+ */
+export type CheckFailureCategory =
+  | "DNS"
+  | "CONNECT"
+  | "TIMEOUT"
+  | "TLS"
+  | "HTTP_ERROR"
+  | "SSRF_REVALIDATION"
+  | "INTERNAL";
+
+/**
+ * Uma checagem já executada (contrato `MonitorCheckResponse`) — SÓ resultado,
+ * nunca configuração: sem `serviceId`/`projectId`/`organizationId`/`url` e
+ * sem corpo, headers, cookies ou tokens (o backend nem os persiste).
+ *
+ * `httpStatus` é anulável: só existe quando houve resposta (uma falha
+ * DNS/timeout não tem status). `message` já vem sanitizada e truncada.
+ */
+export interface MonitorCheckResponse {
+  id: string;
+  monitorId: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMillis: number;
+  /** `null` quando não houve resposta (falha de rede). */
+  httpStatus: number | null;
+  outcome: CheckOutcome;
+  failureCategory: CheckFailureCategory | null;
+  /** Mensagem de domínio curta — nunca corpo de resposta, URL ou secret. */
+  message: string;
+  createdAt: string;
+}
+
+/**
+ * Parâmetros do histórico (Spring Page). O backend ordena por
+ * `startedAt desc` sozinho — NÃO existe `sort` neste contrato.
+ */
+export interface MonitorCheckListParams {
+  page?: number;
+  size?: number;
+}
+
+/** Página Spring do histórico (`Page<MonitorCheckResponse>`). */
+export interface MonitorCheckPage {
+  content: MonitorCheckResponse[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
+/**
+ * Monta a query string do histórico (helper puro — testável sem rede).
+ * Ordem fixa: page, size. Sem params → `""`.
+ */
+export function buildMonitorCheckParams(params?: MonitorCheckListParams): string {
+  if (!params) return "";
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.size !== undefined) query.set("size", String(params.size));
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * GET .../services/{serviceId}/monitors/{monitorId}/checks → **200** página
+ * Spring com o histórico mais recente primeiro (ordenado por `startedAt desc`
+ * no server; não há parâmetro `sort`).
+ *
+ * Query: `page` (default 0) e `size` (default 20, máx 100 — fora da faixa →
+ * **400**). **404** monitor/outro tenant (mesmo 404 genérico da cadeia).
+ * Leitura com qualquer papel e mesmo com serviço/projeto pai inativo.
+ *
+ * O path já carrega a org, então o `apiFetch` NÃO injeta `X-Organization-Id`
+ * (mesmo motivo de `listMonitors`).
+ */
+export async function listMonitorChecks(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  monitorId: string,
+  params?: MonitorCheckListParams
+): Promise<MonitorCheckPage> {
+  return apiFetch<MonitorCheckPage>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/monitors/${monitorId}/checks${buildMonitorCheckParams(params)}`
+  );
+}

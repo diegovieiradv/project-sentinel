@@ -6,8 +6,11 @@ import {
   ApiError,
   activateMonitor,
   createMonitor,
+  listMonitorChecks,
   listMonitors,
   updateMonitor,
+  type CheckOutcome,
+  type MonitorCheckResponse,
   type MonitorListParams,
   type MonitorMethod,
   type MonitorResponse,
@@ -26,8 +29,14 @@ type MonitorActiveFilter = "all" | "active" | "inactive";
 /** Filtro de método → query param opcional `method=GET|HEAD`. */
 type MonitorMethodFilter = "all" | MonitorMethod;
 
+/** Estado da carga do histórico de checagens do monitor expandido. */
+type ChecksStatus = "idle" | "loading" | "ready" | "error";
+
 /** Tamanho da página enviada ao server (contrato: default 20, máx 100). */
 const MONITORS_PAGE_SIZE = 10;
+
+/** Tamanho da página do histórico de checagens (mesmo contrato: máx 100). */
+const CHECKS_PAGE_SIZE = 10;
 
 /** Opções de método — espelha o enum do backend (`GET`/`HEAD`). */
 const MONITOR_METHOD_OPTIONS: MonitorMethod[] = ["GET", "HEAD"];
@@ -106,6 +115,40 @@ function monitorActionError(err: unknown, fallback: string): string {
     return err.message;
   }
   return fallback;
+}
+
+/** Rótulo legível do desfecho persistido (enum `CheckOutcome`). */
+const CHECK_OUTCOME_LABEL: Record<CheckOutcome, string> = {
+  SUCCESS: "OK",
+  DEGRADED_SIGNAL: "Redirect",
+  TARGET_FAILURE: "Failed",
+  SENTINEL_INTERNAL_FAILURE: "Internal error",
+};
+
+/**
+ * Pill do desfecho de UMA checagem — mesma linguagem visual do `StatusBadge`
+ * dos serviços, mas vocabulário próprio: aqui é o resultado de uma execução,
+ * não o estado agregado do serviço.
+ */
+const CHECK_OUTCOME_CLASS: Record<CheckOutcome, string> = {
+  SUCCESS: "border-(--accent)/50 bg-(--accent)/10 text-(--accent)",
+  DEGRADED_SIGNAL:
+    "border-(--accent-soft)/50 bg-(--accent-soft)/10 text-(--accent-soft)",
+  TARGET_FAILURE:
+    "border-(--destructive)/50 bg-(--destructive)/10 text-(--destructive)",
+  SENTINEL_INTERNAL_FAILURE:
+    "border-(--border-hover) bg-(--muted)/10 text-(--muted)",
+};
+
+function CheckOutcomeBadge({ outcome }: { outcome: CheckOutcome }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-semibold ${CHECK_OUTCOME_CLASS[outcome]}`}
+    >
+      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
+      {CHECK_OUTCOME_LABEL[outcome]}
+    </span>
+  );
 }
 
 /** Badge de ciclo de vida (contrato `active`) — não é status de execução. */
@@ -200,6 +243,14 @@ export default function MonitorsPanel({
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<MonitorNotice>(null);
 
+  // Histórico de checagens do monitor expandido (Prompt 10) — somente leitura.
+  const [checks, setChecks] = useState<MonitorCheckResponse[]>([]);
+  const [checksStatus, setChecksStatus] = useState<ChecksStatus>("idle");
+  const [checksError, setChecksError] = useState<string | null>(null);
+  const [checksPage, setChecksPage] = useState(0);
+  const [checksTotalPages, setChecksTotalPages] = useState(0);
+  const [checksTotalElements, setChecksTotalElements] = useState(0);
+
   const busy = creating || saving || togglingId !== null;
   const hasFilter =
     nameFilter !== "" || activeFilter !== "all" || methodFilter !== "all";
@@ -253,14 +304,62 @@ export default function MonitorsPanel({
     };
   }, [orgId, projectId, serviceId, page, nameFilter, activeFilter, methodFilter, reload]);
 
+  // Histórico — só carrega com um monitor aberto; página e `reload` (Retry ou
+  // mutação na lista) regridem juntos. Fechar o detalhe zera o estado no
+  // handler do toggle (nunca setState síncrono dentro do effect).
+  useEffect(() => {
+    const monitorId = expandedId;
+    if (!monitorId) return;
+
+    let cancelled = false;
+
+    async function loadChecks(id: string): Promise<void> {
+      setChecksStatus("loading");
+      setChecksError(null);
+      try {
+        const data = await listMonitorChecks(orgId, projectId, serviceId, id, {
+          page: checksPage,
+          size: CHECKS_PAGE_SIZE,
+        });
+        if (cancelled) return;
+        setChecks(data.content);
+        setChecksTotalPages(data.totalPages);
+        setChecksTotalElements(data.totalElements);
+        setChecksStatus("ready");
+      } catch (err) {
+        if (cancelled) return;
+        if (isUnauthorized(err)) {
+          handleUnauthorized();
+          return;
+        }
+        setChecksStatus("error");
+        setChecksError(messageOf(err, "Could not load checks"));
+      }
+    }
+
+    void loadChecks(monitorId);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, projectId, serviceId, expandedId, checksPage, reload]);
+
   /** Abre/fecha a linha de detalhe, semeando o form de edição com o monitor. */
   function onToggleDetails(monitor: MonitorResponse): void {
     if (expandedId === monitor.id) {
       setExpandedId(null);
       setEditError(null);
+      // histórico é do monitor expandido: fechar descarta tudo
+      setChecksPage(0);
+      setChecks([]);
+      setChecksStatus("idle");
+      setChecksError(null);
+      setChecksTotalPages(0);
+      setChecksTotalElements(0);
       return;
     }
     setExpandedId(monitor.id);
+    setChecksPage(0);
     setEditForm({
       name: monitor.name,
       url: monitor.url,
@@ -574,8 +673,9 @@ export default function MonitorsPanel({
                         {monitor.name}
                       </td>
                       <td className="py-2 pr-3">
-                        {/* Só ciclo de vida, método e tipo — nenhum badge de
-                            execução/status de check (isso não existe aqui). */}
+                        {/* Resumo da linha: só ciclo de vida, método e tipo.
+                            O resultado de cada execução (histórico de checks,
+                            Prompt 10) fica DENTRO do detalhe expandido. */}
                         <span className="flex flex-wrap items-center gap-2">
                           <ActiveBadge active={monitor.active} />
                           <MethodBadge method={monitor.method} />
@@ -801,6 +901,119 @@ export default function MonitorsPanel({
                                 Read-only — your role cannot edit monitors.
                               </p>
                             )}
+
+                            {/* Histórico de checagens (Prompt 10): somente
+                                leitura, ordenado pelo server (mais novo
+                                primeiro) — a UI só pagina. */}
+                            <div className="mt-2 border-t border-(--border) pt-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-(--muted)">
+                                  Last checks
+                                </p>
+                                {checksStatus === "ready" &&
+                                  checksTotalElements > 0 && (
+                                    <span className="text-xs text-(--muted)">
+                                      {checksTotalElements}{" "}
+                                      {checksTotalElements === 1
+                                        ? "check"
+                                        : "checks"}{" "}
+                                      · Page{" "}
+                                      {Math.min(
+                                        checksPage + 1,
+                                        Math.max(checksTotalPages, 1)
+                                      )}{" "}
+                                      of {Math.max(checksTotalPages, 1)}
+                                    </span>
+                                  )}
+                              </div>
+
+                              {checksStatus === "loading" ? (
+                                <p className="mt-2 text-sm text-(--muted)">
+                                  Loading checks…
+                                </p>
+                              ) : checksStatus === "error" ? (
+                                <div className="mt-2 rounded-md border border-(--destructive)/40 bg-(--destructive)/10 p-2 text-sm">
+                                  <p className="text-(--destructive)">
+                                    {checksError ?? "Could not load checks"}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setReload((count) => count + 1)}
+                                    disabled={busy}
+                                    className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              ) : checks.length === 0 ? (
+                                <p className="mt-2 text-sm text-(--muted)">
+                                  No checks recorded yet for this monitor.
+                                </p>
+                              ) : (
+                                <ul className="mt-2 flex flex-col gap-1.5">
+                                  {checks.map((check) => (
+                                    <li
+                                      key={check.id}
+                                      className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) bg-(--background) px-2 py-1.5 text-xs"
+                                    >
+                                      <CheckOutcomeBadge
+                                        outcome={check.outcome}
+                                      />
+                                      <span className="text-(--muted)">
+                                        {check.startedAt}
+                                      </span>
+                                      <span className="text-(--muted)">
+                                        {check.durationMillis}ms
+                                      </span>
+                                      {check.httpStatus !== null && (
+                                        <span className="text-(--muted)">
+                                          HTTP {check.httpStatus}
+                                        </span>
+                                      )}
+                                      {check.failureCategory && (
+                                        <span className="text-(--muted)">
+                                          {check.failureCategory}
+                                        </span>
+                                      )}
+                                      <span className="min-w-0 flex-1 break-all text-(--muted)">
+                                        {check.message}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+
+                              {checksStatus === "ready" &&
+                                checksTotalPages > 1 && (
+                                  <div className="mt-2 flex justify-end gap-2 text-xs">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setChecksPage((current) =>
+                                          Math.max(current - 1, 0)
+                                        )
+                                      }
+                                      disabled={checksPage === 0 || busy}
+                                      className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    >
+                                      Previous
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setChecksPage((current) => current + 1)
+                                      }
+                                      disabled={
+                                        checksPage + 1 >= checksTotalPages ||
+                                        busy
+                                      }
+                                      className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    >
+                                      Next
+                                    </button>
+                                  </div>
+                                )}
+                            </div>
                           </div>
                         </td>
                       </tr>

@@ -351,7 +351,7 @@ com.sentinel
 ## 10. Fora do escopo (prompts futuros)
 
 - **Execução das checagens** (Prompt 09): scheduler, requisições HTTP reais, revalidação do alvo **por conexão e por redirect** (DNS rebinding), classificação de falha e codificação de resultado.
-- Tabela de **resultados** de checagem: latência, status HTTP, falha, séries temporais, janelas de observação e o `status` operacional do serviço — nenhuma coluna desse tipo existe em `monitors`.
+- Tabela de **resultados** de checagem: **construída no Prompt 10** fora desta tabela (`monitor_checks`, ver [operational-state.md](operational-state.md) — latência, status HTTP, falha e o `status` operacional do serviço); **séries temporais, janelas de observação por período** e dashboards continuam **fora do escopo**. Nenhuma coluna desse tipo existe em `monitors`.
 - **Regras de alerta, notificações, incidentes, dashboards** e trilha de auditoria.
 - Remoção definitiva de monitor (hoje a rota `DELETE` devolve `405`; o soft-delete é o `.../activation`).
 - Outros tipos de checagem além de `HTTP` (`PING`, `TCP`, `DNS`…), credenciais/headers no alvo e bloqueio por escopo geográfico.

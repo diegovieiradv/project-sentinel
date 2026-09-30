@@ -1,6 +1,6 @@
 # Monitoring Engine — Sentinel
 
-> **Prompt 09 de 18** — execução das checagens HTTP dos monitores. Este documento descreve **o que está construído**: o pacote `com.sentinel.monitoring` (scheduler, dispatcher, executor, revalidação SSRF e transporte), a seleção de elegíveis no banco, a classificação de desfecho/falha e o **resultado transitório em memória** — sem migrations, sem tabela de resultados e sem novo tipo `MonitorCheck`. A configuração declarativa dos monitores é a do [monitors.md](monitors.md); a guarda SSRF de cadastro é a mesma `SsrfGuard` (reutilizada aqui na execução, com fonte única de política).
+> **Prompt 09 de 18** — execução das checagens HTTP dos monitores. Este documento descreve **o que está construído**: o pacote `com.sentinel.monitoring` (scheduler, dispatcher, executor, revalidação SSRF e transporte), a seleção de elegíveis no banco, a classificação de desfecho/falha e o **resultado transitório em memória**. A configuração declarativa dos monitores é a do [monitors.md](monitors.md); a guarda SSRF de cadastro é a mesma `SsrfGuard` (reutilizada aqui na execução, com fonte única de política). O **Prompt 10** acrescentou a persistência do resultado e a avaliação do estado do serviço (`monitor_checks`, `V8`) — ver [operational-state.md](operational-state.md).
 
 ## 1. Escopo implementado
 
@@ -16,8 +16,8 @@
 | `JdkHttpTransport` (`java.net.http`, redirects **nunca** seguidos, corpo descartado) | Construído |
 | Classificação `MonitorOutcome` × `FailureCategory` + `MonitorExecutionResult` (in-memory) | Construído |
 | `MonitoringProperties` (`sentinel.monitoring.*`) + bloco em `application.yml`; `enabled=false` no perfil `test` | Construído |
-| Resultado persistido (latência/status/histórico), `status` operacional, métricas e séries temporais | **Fora do escopo** (Prompt 10+) |
-| Migration nova / entidade JPA no pacote do engine / tipo `MonitorCheck` | **Não existe** (travado por teste de fronteira) |
+| Resultado persistido (`monitor_checks`, `V8`), `status` operacional e API de histórico | **Construído no Prompt 10** — ver [operational-state.md](operational-state.md) |
+| Migration nova / entidade JPA **dentro do pacote do engine** | **Não existe** (travado por teste de fronteira — `MonitorCheck`/`V8` vivem no domínio `com.sentinel.project.*`, ver §9) |
 
 ## 2. Arquitetura
 
@@ -34,11 +34,13 @@ graph TB
         EXEC -->|1. revalida| GUARD[MonitorTargetValidator<br/>→ SsrfGuard real]
         EXEC -->|2. envia| TRANSPORT[HttpTransport<br/>JdkHttpTransport]
         TRANSPORT -->|GET/HEAD + timeout| TARGET[Alvo externo HTTPS]
+        TASK -->|MonitorExecutionResult| REC["MonitorCheckRecorder<br/>+ OperationalStateEvaluator<br/>(Prompt 10 — ver operational-state)"]
+        TASK -->|MonitorExecutionResult| LOG["Log + contadores do dispatcher<br/>(transitório)"]
     end
-    EXEC -->|MonitorExecutionResult| LOG["Log + contadores<br/>(transitório, sem persistência)"]
+    REC --> DB2[(monitor_checks<br/>+ services.status)]
 ```
 
-O scheduler **nunca** executa HTTP: o custo de rede acontece só nas threads do pool (`sentinel-monitoring-*`), identificáveis em thread dumps.
+O scheduler **nunca** executa HTTP: o custo de rede acontece só nas threads do pool (`sentinel-monitoring-*`), identificáveis em thread dumps. O destino do resultado (log/contadores do Prompt 09 e persistência + avaliação do Prompt 10) está em [operational-state.md](operational-state.md) §4.
 
 ## 3. Fluxo de um tick
 
@@ -46,7 +48,7 @@ O scheduler **nunca** executa HTTP: o custo de rede acontece só nas threads do 
 2. **Poda** — `dueTracker.retainOnly(eligibleIds)` descarta estado de quem saiu da elegibilidade (desativado, removido, serviço/projeto inativos).
 3. **Decisão por monitor** — ordem **inegociável**: `isDue → tryDispatch → commit`. O `commit` (que adia o próximo vencimento) só acontece em `ACCEPTED`; `IN_FLIGHT` e `SATURATED` deixam o monitor *due* para o próximo tick.
 4. **Isolamento** — exceção em um monitor é logada e contada; o lote continua. Exceção no tick inteiro é engolida no `scheduledTick` para o agendador Spring nunca desarmar a task.
-5. **Execução** — a `MonitorExecutionTask` roda no pool, chama o executor, loga o resultado e **sempre** libera o in-flight no `finally`.
+5. **Execução** — a `MonitorExecutionTask` roda no pool, chama o executor, loga o resultado, **persiste a linha e reavalia o estado do serviço** (etapas do Prompt 10 — ver [operational-state.md](operational-state.md) §4) e **sempre** libera o in-flight no `finally`.
 
 ## 4. Despacho (`MonitoringDispatcher.DispatchOutcome`)
 
@@ -75,6 +77,8 @@ Contadores públicos (desde o startup): `dispatchedCount`, `saturatedCount`, `in
 
 Regras de conteúdo: nenhuma mensagem carrega corpo de resposta, URL com query string, `Authorization` ou cookie; o request leva **apenas** `User-Agent: Sentinel-Monitor/1.0` e o timeout da própria request é `Monitor.timeoutMillis` (a V7 garante `timeout < interval`). Saturação **não** gera `MonitorExecutionResult`.
 
+O **único refinamento** feito depois desta classificação é o 3xx: o motor diz `SUCCESS` (houve resposta e a requisição completou), a persistência registra `DEGRADED_SIGNAL` — ver [operational-state.md](operational-state.md) §5.
+
 **Ordem no executor:** início no `Clock` → revalidação SSRF imediatamente antes da rede (a guarda do cadastro valeu no passado; aqui vale de novo — defesa contra DNS rebinding/TOCTOU; a janela residual até o resolve interno do `HttpClient` não é eliminável por completo) → monta request → `transport.send` → classifica. `execute()` **nunca lança**: tudo vira resultado (`monitorId` só é `null` em bug interno).
 
 ## 6. Configuração
@@ -91,13 +95,15 @@ Config inválida (`worker-count < 1`, `queue < 0`) derruba o startup no `initial
 ## 7. Estrutura de código (backend)
 
 ```
-com.sentinel.monitoring                       # fronteira do Prompt 09 (17 classes main)
+com.sentinel.monitoring                       # fronteira do Prompt 09 + 2 classes do Prompt 10 (19 classes main)
 ├── MonitoringSchedulingConfiguration.java    # @EnableScheduling só se enabled=true
 ├── MonitoringScheduler.java                  # scheduledTick (catch) → tick → dispatchIfDue
-├── MonitorEligibilityService.java            # ponto único de consulta da elegibilidade
+├── MonitorEligibilityService.java            # ponto único da consulta de elegibilidade
 ├── DueTracker.java                           # isDue/commit/retainOnly (estado em memória)
 ├── MonitoringDispatcher.java                 # pool dedicado + in-flight + contadores
 ├── MonitorExecutionTask.java                 # fronteira da thread: catch + finally release
+├── MonitorCheckRecorder.java                 # Prompt 10: grava monitor_checks (commit próprio)
+├── OperationalStateEvaluator.java            # Prompt 10: janela de 3 POR MONITOR + tabela §18 → Service.status
 ├── HttpMonitorExecutor.java                  # 1 checagem: valida → envia → classifica
 ├── MonitorTargetValidator.java               # interface (injeção nos testes)
 ├── SsrfGuardMonitorTargetValidator.java      # produção: delega ao SsrfGuard do Prompt 08
@@ -110,38 +116,42 @@ com.sentinel.monitoring                       # fronteira do Prompt 09 (17 class
 └── MonitoringProperties.java                 # sentinel.monitoring.*
 ```
 
-- **Zero dependências novas no `pom.xml`** — JDK HTTP client, Spring Scheduling e o `SsrfGuard` já existentes.
-- `Monitor`/`MonitorRepository` ganharam apenas o método de elegibilidade (aditivo; nenhum contrato de API mudou).
-- **Nenhuma migration** — a fronteira não persiste nada (ver §9).
+- **Zero dependências novas no `pom.xml`** — JDK HTTP client, Spring Scheduling e o `SsrfGuard` já existentes (o Prompt 10 também não acrescentou nenhuma).
+- `Monitor`/`MonitorRepository` ganharam o método de elegibilidade (Prompt 09) e `findActiveIdsByServiceId` (Prompt 10) — aditivo; nenhum contrato de API mudou.
+- **Nenhuma `@Entity` e nenhum repositório de entidade neste pacote** — `MonitorCheckRecorder`/`OperationalStateEvaluator` usam o repositório do domínio `com.sentinel.project.monitor` (ver §9).
+- A persistência do resultado é a `monitor_checks` (**V8**), descrita em [operational-state.md](operational-state.md) §3.
 - `Clock` (interface própria, não `java.time.Clock`) e `HttpTransport`/`MonitorTargetValidator` são as costuras de teste: relógio controlado, transporte stub e validador poroso **por contexto de teste**, nunca por configuração de runtime.
 
 ## 8. Testes
 
-- **40 testes novos** em 6 classes (`backend/src/test/java/com/sentinel/monitoring/`), zero alteração em classes de teste existentes:
-  - `DueTrackerTest` (6) — primeiro vencimento, ciclo de intervalo, `retainOnly`, estado após commit;
-  - `MonitoringDispatcherTest` (5) — aceitação, in-flight nunca duplica, saturação (fila cheia) sem contar como falha, exceção que escapa do executor é contada e libera o monitor, contadores por delta;
-  - `HttpMonitorExecutorTest` (13) — servidor `com.sun.net.httpserver` real em loopback: 2xx/4xx/5xx, GET×HEAD, timeout, `User-Agent`, redirect **não** seguido (3xx = resposta), corpo descartado;
-  - `HttpMonitorExecutorSsrfRuntimeTest` (7) — `SsrfGuard` real + `StubDnsResolver` local: alvo privado recusado na revalidação vira `SENTINEL_INTERNAL_FAILURE/SSRF_REVALIDATION`, nunca `TARGET_FAILURE`;
-  - `MonitoringSchedulerTest` (6) — integração com PostgreSQL de teste e transporte stub: execução imediata + intervalo, poda na desativação, inatividade de serviço/projeto, in-flight não duplica, falha interna contada e reexecutada no intervalo seguinte, perfil `test` sem `@Scheduled`;
-  - `MonitoringEngineBoundaryTest` (3) — ver §9.
-- Contadores são observados por **baseline/delta** (acumulam no contexto Spring); caminhos stub são resetados por teste (`reset()`).
-- Nenhum teste depende de rede externa: loopback do JDK, IP público literal (`93.184.216.34`) e DNS stub.
-- Comando: `mvn clean test` (perfil `test`, Testcontainers PostgreSQL) e `mvn -DskipTests package`.
+O pacote de teste `backend/src/test/java/com/sentinel/monitoring/` tem hoje 8 classes / **75 testes** — 41 já estavam no fim do Prompt 09 e 34 vieram com o Prompt 10 (recorder e avaliador são novos; dispatcher, scheduler e boundary foram ampliados):
+
+- `DueTrackerTest` (6) — primeiro vencimento, ciclo de intervalo, `retainOnly`, estado após commit;
+- `MonitoringDispatcherTest` (8) — aceitação, in-flight nunca duplica, saturação (fila cheia) sem contar como falha, exceção que escapa do executor é contada e libera o monitor, contadores por delta + (Prompt 10) falha na gravação pula a avaliação e falha na avaliação preserva o histórico;
+- `HttpMonitorExecutorTest` (13) — servidor `com.sun.net.httpserver` real em loopback: 2xx/4xx/5xx, GET×HEAD, timeout, `User-Agent`, redirect **não** seguido (3xx = resposta), corpo descartado;
+- `HttpMonitorExecutorSsrfRuntimeTest` (7) — `SsrfGuard` real + `StubDnsResolver` local: alvo privado recusado na revalidação vira `SENTINEL_INTERNAL_FAILURE/SSRF_REVALIDATION`, nunca `TARGET_FAILURE`;
+- `MonitoringSchedulerTest` (12) — integração com PostgreSQL de teste e transporte stub: execução imediata + intervalo, poda na desativação, inatividade de serviço/projeto, in-flight não duplica, falha interna contada e reexecutada no intervalo seguinte, perfil `test` sem `@Scheduled` + (Prompt 10) subida/descida da tabela de status, 500×3 nunca vira `UNAVAILABLE`, 302×3 = `DEGRADED_SIGNAL`, 1 linha por execução, `startedAt` repetido e (revisão) falhas internas persistidas **sem mover o status**;
+- `MonitorCheckRecorderTest` (10, **novo no Prompt 10**) — tradução e sanitização da mensagem;
+- `OperationalStateEvaluatorTest` (15, **novo no Prompt 10**) — cada linha da tabela de agregação, com a indisponibilidade testada **por monitor** (5 casos multi-monitor);
+- `MonitoringEngineBoundaryTest` (4) — ver §9.
+
+Contadores são observados por **baseline/delta** (acumulam no contexto Spring); caminhos stub são resetados por teste (`reset()`).
+Nenhum teste depende de rede externa: loopback do JDK, IP público literal (`93.184.216.34`) e DNS stub.
+Comando: `mvn clean test` (perfil `test`, Testcontainers PostgreSQL) e `mvn -DskipTests package`.
 
 ## 9. Fronteira do que este prompt NÃO é
 
-Travado por `MonitoringEngineBoundaryTest`:
+Travado por `MonitoringEngineBoundaryTest` (contrato **atualizado de propósito** no Prompt 10):
 
-1. **Nenhum tipo `MonitorCheck`** em lugar nenhum do código (scan de `com.sentinel` no classpath);
-2. **Nenhuma `@Entity` em `com.sentinel.monitoring.*`** — o motor não persiste;
-3. **Nenhuma migration menciona história de checagem** (`monitor_check`/`monitor_result`/`monitor_history`/`monitor_sample` não aparecem em nome nem conteúdo de nenhuma migration — catálogo termina na `V7` do Prompt 08).
+1. **Nenhuma `@Entity` em `com.sentinel.monitoring.*`** — o motor orquestra; quem persiste é `com.sentinel.project.monitor.model.MonitorCheck`;
+2. **UMA tabela de histórico** (`monitor_checks`, `V8`), append-only — sem `UNIQUE (monitor_id, started_at)`, sem `execution_id`, sem `service_id` redundante, sem `updated_at`;
+3. **`Service.status` só é escrito pelo `OperationalStateEvaluator`** — nenhum endpoint altera status.
 
-O resultado de uma checagem é **transitório**: viva no `MonitorExecutionResult`, aparece em log e nos contadores, e morre ali. Persistência de saúde/histórico é Prompt 10+ — quando existir, este contrato é atualizado **de propósito**, nunca por acidente.
+O resultado de uma checagem continua transitório **dentro do motor** (vive no `MonitorExecutionResult`, aparece em log e nos contadores); a linha persistida é responsabilidade do Prompt 10 e está inteira em [operational-state.md](operational-state.md).
 
 ## 10. Fora do escopo (prompts futuros)
 
-- **Tabela de resultados** (latência, status, falha, séries temporais, janelas de observação) e o `status` operacional do serviço.
-- Refinamento de saúde para 4xx/5xx (hoje `HTTP_ERROR` = falha do alvo), alertas, notificações, incidentes e dashboards.
-- Endpoints de leitura de execução (hoje o resultado só existe em log/contador).
+- Séries temporais, uptime %, janelas de observação por período e retenção/expurgo do histórico.
+- Alertas, notificações, incidentes e dashboards (consumidores de `Service.status`).
 - Métricas de aplicação (Micrometer) para os contadores do dispatcher.
 - Outros tipos de checagem (`PING`, `TCP`, `DNS`) — o `type` continua `HTTP` como invariante do cadastro.

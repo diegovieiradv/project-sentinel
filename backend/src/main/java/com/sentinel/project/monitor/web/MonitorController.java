@@ -5,6 +5,7 @@ import java.util.UUID;
 import com.sentinel.error.ApiException;
 import com.sentinel.organization.web.TenantScoped;
 import com.sentinel.project.monitor.dto.MonitorActivationRequest;
+import com.sentinel.project.monitor.dto.MonitorCheckResponse;
 import com.sentinel.project.monitor.dto.MonitorCreateRequest;
 import com.sentinel.project.monitor.dto.MonitorResponse;
 import com.sentinel.project.monitor.dto.MonitorUpdateRequest;
@@ -58,6 +59,12 @@ import org.springframework.web.bind.annotation.RestController;
  * <p><b>Sem DELETE</b> (nem handler, nem soft-delete implícito): a remoção
  * não existe neste prompt — desativação é o {@code .../activation}. Um DELETE
  * na rota cai naturalmente no contrato global de {@code 405}.</p>
+ *
+ * <p><b>Sub-recurso de leitura do histórico</b> (Prompt 10):
+ * {@code GET /{monitorId}/checks} devolve as checagens JÁ EXECUTADAS do
+ * monitor — o cadastro ({@code MonitorResponse}) continua sem qualquer
+ * resultado, e o histórico é um recurso separado, paginado e somente
+ * leitura.</p>
  */
 @RestController
 @RequestMapping(
@@ -117,6 +124,28 @@ public class MonitorController {
             @PathVariable String serviceId,
             @PathVariable String monitorId) {
         return monitorService.get(parseId(projectId), parseId(serviceId), parseId(monitorId));
+    }
+
+    /**
+     * GET /{monitorId}/checks → 200 histórico paginado de checagens (Prompt
+     * 10), somente leitura e qualquer papel — mesmo arranjo do GET do
+     * monitor: cadeia provada no service, 404 genérico, pais inativos
+     * continuam legíveis.
+     *
+     * @param page   0-based, default {@code 0}
+     * @param size   itens por página, default {@code 20}, máximo {@code 100}
+     *               (fora da faixa → 400, igual à listagem de monitores)
+     */
+    @GetMapping("/{monitorId}/checks")
+    @TenantScoped
+    public Page<MonitorCheckResponse> checks(
+            @PathVariable String projectId,
+            @PathVariable String serviceId,
+            @PathVariable String monitorId,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        return monitorService.checks(
+                parseId(projectId), parseId(serviceId), parseId(monitorId), page, size);
     }
 
     /** PATCH {name?, url?, method?, intervalSeconds?, timeoutMillis?} → 200. */

@@ -10,11 +10,14 @@ package com.sentinel.project.model;
  * serviço ({@code active=false}) não diz nada sobre a saúde dele — e vice-versa.
  * Um serviço inativo pode continuar {@code UNAVAILABLE} no registro.</p>
  *
- * <p><b>Neste prompt ninguém escreve o status:</b> toda criação nasce
- * {@link #UNKNOWN} e nenhuma rota o altera. O enum existe como contrato de
- * dado (coluna {@code status VARCHAR(20)} + CHECK na migration V6) para que os
- * prompts futuros de monitoramento tenham onde registrar a observação real —
- * expor um status "fake" (tudo operacional) seria falsa observabilidade.</p>
+ * <p><b>Quem escreve:</b> apenas o motor de monitoramento (Prompt 10) — o
+ * {@code OperationalStateEvaluator} recalcula o valor a partir da janela de
+ * checks persistidos e grava <b>só quando muda</b>, sob lock pessimista. Toda
+ * criação nasce {@link #UNKNOWN} e nenhuma rota altera o campo: ele não é
+ * aceito em payload, e a ativação/desativação do serviço não o mexe. Não
+ * expor um status "fake" (tudo operacional) é regra de observabilidade
+ * honesta — só quem coleta de fato pode dizer que o serviço está
+ * saudável.</p>
  *
  * <p>Domínio idêntico ao CHECK {@code services_status_check} da migration V6:
  * a enumeração é a validação na aplicação, o banco é a última barreira.</p>

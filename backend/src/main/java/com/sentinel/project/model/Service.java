@@ -2,6 +2,7 @@ package com.sentinel.project.model;
 
 import java.time.Instant;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -36,10 +37,14 @@ import jakarta.persistence.Table;
  * {@code ServiceResponse}).</p>
  *
  * <p><b>{@code status} é propriedade de servidor:</b> nasce
- * {@link ServiceStatus#UNKNOWN} no construtor de domínio e não tem setter —
- * nenhum endpoint deste prompt o altera (a rota de ativação mexe apenas em
- * {@code active}). Quando o monitoramento existir (prompt futuro) a transição
- * de status entrará como caminho de domínio explícito, não como campo de payload.</p>
+ * {@link ServiceStatus#UNKNOWN} no construtor de domínio e não é aceito em
+ * payload algum — nenhum endpoint cria ou edita status. A ÚNICA transição
+ * vem do motor de monitoramento (Prompt 10): o
+ * {@code OperationalStateEvaluator} chama {@link #setStatusInternal} sob
+ * lock pessimista da linha, apenas quando o recálculo muda o valor. O setter
+ * é público porque o avaliador vive em outro pacote
+ * ({@code com.sentinel.monitoring}); a restrição é de quem o chama, não de
+ * visibilidade Java.</p>
  *
  * <p><b>Nome da classe:</b> {@code Service} colide com a anotação
  * {@code @Service} do Spring nos classes que precisam das DUAS. O arranjo
@@ -81,9 +86,9 @@ public class Service {
     private boolean active;
 
     /**
-     * Estado operacional: nasce {@link ServiceStatus#UNKNOWN} e NÃO tem
-     * setter público — este prompt não altera status (ver javadoc da classe).
-     * {@code length = 20} espelha {@code VARCHAR(20)} + CHECK da migration V6.
+     * Estado operacional: nasce {@link ServiceStatus#UNKNOWN} e só muda pelo
+     * {@link #setStatusInternal} (ver javadoc da classe). {@code length = 20}
+     * espelha {@code VARCHAR(20)} + CHECK da migration V6.
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -146,7 +151,7 @@ public class Service {
         return name.trim().toLowerCase(Locale.ROOT);
     }
 
-    // --- mutações (somente pelo ServiceService) ----------------------------
+    // --- mutações (ServiceService; exceto status, só o evaluator) ---------
 
     /** Renomeia e recalcula a chave de unicidade — único caminho pós-criação. */
     public void rename(String name) {
@@ -163,8 +168,20 @@ public class Service {
         this.active = active;
     }
 
-    // Não existe setStatus: o status é de domínio/servidor e neste prompt é
-    // imutável após a criação (Prompt 08+ adicionará transição explícita).
+    /**
+     * Transição de estado operacional — chamado EXCLUSIVAMENTE pelo
+     * {@code OperationalStateEvaluator} do motor de monitoramento (Prompt
+     * 10), já sob lock pessimista da linha e apenas quando o valor muda.
+     *
+     * <p>Não é setter de API: nenhum endpoint aceita status em payload, o
+     * construtor de domínio continua nascendo {@link ServiceStatus#UNKNOWN} e
+     * a ativação/desativação do serviço não mexe aqui.</p>
+     *
+     * @param status novo estado (nunca {@code null})
+     */
+    public void setStatusInternal(ServiceStatus status) {
+        this.status = Objects.requireNonNull(status, "status");
+    }
 
     // --- leitura ------------------------------------------------------------
 

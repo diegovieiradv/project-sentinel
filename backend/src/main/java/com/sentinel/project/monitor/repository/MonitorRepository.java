@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Persistência de monitores (Prompt 08).
@@ -123,4 +124,29 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID> {
               AND m.timeoutMillis < m.intervalSeconds * 1000
             """)
     List<Monitor> findAllEligibleForExecution();
+
+    // --- Operational State (Prompt 10) -------------------------------------
+
+    /**
+     * Ids dos monitores ATIVOS de um serviço — o conjunto que contribui para
+     * o estado operacional calculado pelo
+     * {@code com.sentinel.monitoring.OperationalStateEvaluator}. Um monitor
+     * desativado deixa de contar imediatamente (as checagens antigas dele
+     * saem da janela agregada); um monitor novo entra com janela vazia, que
+     * não fabrica evidência.
+     *
+     * <p>Consulta de sistema interno, escopada por {@code serviceId} (já
+     * resolvido na cadeia do tenant pelo próprio avaliador), sem paginação:
+     * o conjunto é limitado pelos monitores do serviço.</p>
+     *
+     * @param serviceId serviço dono dos monitores
+     * @return ids dos monitores ativos (possivelmente vazio)
+     */
+    @Query("""
+            SELECT m.id
+            FROM Monitor m
+            WHERE m.service.id = :serviceId
+              AND m.active = true
+            """)
+    List<UUID> findActiveIdsByServiceId(@Param("serviceId") UUID serviceId);
 }

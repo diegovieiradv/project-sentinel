@@ -9,6 +9,10 @@
  * 409 (MONITOR_NAME_DUPLICATE/PROJECT_INACTIVE/SERVICE_INACTIVE), 403 e do
  * gatilho de sessão (401 vs 403).
  *
+ * Prompt 10 acrescenta o histórico de checagens: `buildMonitorCheckParams`
+ * (query do histórico) e `listMonitorChecks` (path de CINCO níveis
+ * `org/project/service/monitor/checks`, sem `sort`, sem header de tenant).
+ *
  * Ambiente `node` (ver `vitest.config.ts`): sem jsdom. Onde o caminho de
  * produção usa `document`/`window`/`localStorage`, o teste injeta um stub
  * mínimo — mesmo padrão de `api.test.ts`/`projects.test.ts`/`services.test.ts`.
@@ -23,12 +27,14 @@ import {
   ApiError,
   SESSION_EXPIRED_EVENT,
   activateMonitor,
+  buildMonitorCheckParams,
   buildMonitorListParams,
   clearOrganizationId,
   createMonitor,
   getAccessToken,
   getMonitor,
   getOrganizationId,
+  listMonitorChecks,
   listMonitors,
   setAccessToken,
   setOrganizationId,
@@ -533,5 +539,160 @@ describe("getMonitor / updateMonitor / activateMonitor", () => {
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(401);
     expect(dispatched).toEqual([SESSION_EXPIRED_EVENT]);
+  });
+});
+
+/** Uma checagem persistida (contrato `MonitorCheckResponse`). */
+const CHECK = {
+  id: "3f6b0d2c-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+  monitorId: MONITOR_ID,
+  startedAt: "2026-01-03T00:00:00Z",
+  finishedAt: "2026-01-03T00:00:00.250Z",
+  durationMillis: 250,
+  httpStatus: 200,
+  outcome: "SUCCESS",
+  failureCategory: null,
+  message: "Target responded with HTTP 200",
+  createdAt: "2026-01-03T00:00:00Z",
+};
+
+const EMPTY_CHECK_PAGE = {
+  content: [],
+  totalElements: 0,
+  totalPages: 0,
+  number: 0,
+  size: 20,
+};
+
+describe("buildMonitorCheckParams (query string)", () => {
+  it("sem params (ou objeto vazio) → string vazia, sem '?'", () => {
+    expect(buildMonitorCheckParams()).toBe("");
+    expect(buildMonitorCheckParams({})).toBe("");
+  });
+
+  it("ordem fixa page,size e page=0 preservado (nunca omitido)", () => {
+    expect(buildMonitorCheckParams({ page: 0, size: 10 })).toBe(
+      "?page=0&size=10"
+    );
+    expect(buildMonitorCheckParams({ size: 5 })).toBe("?size=5");
+    expect(buildMonitorCheckParams({ page: 2 })).toBe("?page=2");
+  });
+});
+
+describe("listMonitorChecks", () => {
+  it("path de CINCO níveis + query do histórico e resposta da página", async () => {
+    respondWith(200, {
+      content: [CHECK],
+      totalElements: 1,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+    });
+
+    const page = await listMonitorChecks(
+      ORG_ID,
+      PROJECT_ID,
+      SERVICE_ID,
+      MONITOR_ID,
+      { page: 1, size: 20 }
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(
+      `${API_URL}/api/v1/organizations/${ORG_ID}/projects/${PROJECT_ID}/services/${SERVICE_ID}/monitors/${MONITOR_ID}/checks?page=1&size=20`
+    );
+    expect(calls[0].init.method ?? "GET").toBe("GET");
+    expect(calls[0].init.credentials).toBe("include");
+
+    const headers = headersOf();
+    expect(headers["Authorization"]).toBe("Bearer access-token-em-memoria");
+    // GET sem CSRF; path já carrega a org → header condicional NUNCA entra.
+    expect(headers["X-XSRF-TOKEN"]).toBeUndefined();
+    expect(headers["X-Organization-Id"]).toBeUndefined();
+
+    expect(page.content).toHaveLength(1);
+    expect(page.content[0].id).toBe(CHECK.id);
+    expect(page.content[0].monitorId).toBe(MONITOR_ID);
+    expect(page.content[0].outcome).toBe("SUCCESS");
+    expect(page.content[0].httpStatus).toBe(200);
+    expect(page.content[0].failureCategory).toBeNull();
+    expect(page.content[0].durationMillis).toBe(250);
+    expect(page.totalElements).toBe(1);
+    expect(page.totalPages).toBe(1);
+  });
+
+  it("sem params → path sem '?' (defaults do server: page 0, size 20)", async () => {
+    respondWith(200, EMPTY_CHECK_PAGE);
+
+    const page = await listMonitorChecks(
+      ORG_ID,
+      PROJECT_ID,
+      SERVICE_ID,
+      MONITOR_ID
+    );
+
+    expect(calls[0].url).toBe(
+      `${API_URL}/api/v1/organizations/${ORG_ID}/projects/${PROJECT_ID}/services/${SERVICE_ID}/monitors/${MONITOR_ID}/checks`
+    );
+    expect(page.content).toEqual([]);
+    expect(page.totalElements).toBe(0);
+  });
+
+  it("falha de rede preserva httpStatus/failureCategory anuláveis no contrato", async () => {
+    respondWith(200, {
+      content: [
+        {
+          ...CHECK,
+          id: "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+          httpStatus: null,
+          outcome: "TARGET_FAILURE",
+          failureCategory: "TIMEOUT",
+          message: "Request exceeded the monitor timeout",
+        },
+      ],
+      totalElements: 1,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+    });
+
+    const page = await listMonitorChecks(
+      ORG_ID,
+      PROJECT_ID,
+      SERVICE_ID,
+      MONITOR_ID
+    );
+
+    const [failed] = page.content;
+    expect(failed.httpStatus).toBeNull();
+    expect(failed.outcome).toBe("TARGET_FAILURE");
+    expect(failed.failureCategory).toBe("TIMEOUT");
+    // contrato de SÓ resultado: nunca configuração do monitor/serviço
+    expect(failed).not.toHaveProperty("serviceId");
+    expect(failed).not.toHaveProperty("url");
+    expect(failed).not.toHaveProperty("organizationId");
+  });
+
+  it("404 (monitor de outro tenant) vira ApiError SEM evento de sessão", async () => {
+    setOrganizationId(ORG_ID);
+    respondWith(404, {
+      code: "NOT_FOUND",
+      message: "Resource not found",
+      timestamp: "2026-01-01T00:00:00Z",
+      path: `/api/v1/organizations/${ORG_ID}/projects/${PROJECT_ID}/services/${SERVICE_ID}/monitors/${MONITOR_ID}/checks`,
+    });
+
+    const err = await listMonitorChecks(
+      ORG_ID,
+      PROJECT_ID,
+      SERVICE_ID,
+      MONITOR_ID
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(404);
+    expect(dispatched).toEqual([]);
+    expect(getAccessToken()).toBe("access-token-em-memoria");
+    expect(getOrganizationId()).toBe(ORG_ID);
   });
 });

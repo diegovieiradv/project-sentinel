@@ -13,9 +13,11 @@ import com.sentinel.project.monitor.model.MonitorType;
  *
  * <p><b>Só configuração, nunca resultado:</b> o payload tem identidade,
  * escopo ({@code organizationId}/{@code projectId}/{@code serviceId}), alvo e
- * parâmetros da checagem + {@code active}. Não existe (nem existirá por este
- * prompt) campo de latência, status HTTP, falha, última execução ou saúde —
- * isso é material de monitoramento, não de cadastro.</p>
+ * parâmetros da checagem + {@code active}. Não existe campo de latência,
+ * status HTTP, falha, última execução ou saúde — isso é material de
+ * monitoramento e vive no RECURSO SEPARADO
+ * {@code GET .../monitors/{monitorId}/checks} ({@link MonitorCheckResponse},
+ * Prompt 10), não no cadastro.</p>
  *
  * <p><b>{@code role}</b>: papel do usuário AUTENTICADO NA REQUISIÇÃO dentro
  * desta organização (mesma semântica de {@code ServiceResponse}).</p>

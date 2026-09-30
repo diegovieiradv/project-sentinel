@@ -9,11 +9,13 @@ import com.sentinel.organization.model.Role;
 import com.sentinel.project.model.Project;
 import com.sentinel.project.model.Service;
 import com.sentinel.project.monitor.dto.MonitorActivationRequest;
+import com.sentinel.project.monitor.dto.MonitorCheckResponse;
 import com.sentinel.project.monitor.dto.MonitorCreateRequest;
 import com.sentinel.project.monitor.dto.MonitorResponse;
 import com.sentinel.project.monitor.dto.MonitorUpdateRequest;
 import com.sentinel.project.monitor.model.Monitor;
 import com.sentinel.project.monitor.model.MonitorMethod;
+import com.sentinel.project.monitor.repository.MonitorCheckRepository;
 import com.sentinel.project.monitor.repository.MonitorRepository;
 import com.sentinel.project.repository.ProjectRepository;
 import com.sentinel.project.repository.ServiceRepository;
@@ -110,16 +112,19 @@ public class MonitorService {
     private static final List<String> SORT_FIELDS = List.of("createdAt", "name", "id");
 
     private final MonitorRepository monitorRepository;
+    private final MonitorCheckRepository monitorCheckRepository;
     private final ServiceRepository serviceRepository;
     private final ProjectRepository projectRepository;
     private final SsrfGuard ssrfGuard;
 
     public MonitorService(
             MonitorRepository monitorRepository,
+            MonitorCheckRepository monitorCheckRepository,
             ServiceRepository serviceRepository,
             ProjectRepository projectRepository,
             SsrfGuard ssrfGuard) {
         this.monitorRepository = monitorRepository;
+        this.monitorCheckRepository = monitorCheckRepository;
         this.serviceRepository = serviceRepository;
         this.projectRepository = projectRepository;
         this.ssrfGuard = ssrfGuard;
@@ -194,6 +199,34 @@ public class MonitorService {
     public MonitorResponse get(UUID projectId, UUID serviceId, UUID monitorId) {
         Service service = requireParents(projectId, serviceId);
         return MonitorResponse.from(findMonitor(service, monitorId), TenantContext.role());
+    }
+
+    // --- GET .../monitors/{monitorId}/checks -------------------------------
+
+    /**
+     * Histórico de checagens do monitor (Prompt 10) — somente leitura,
+     * qualquer papel, MESMA cadeia do {@code get} (projeto no tenant →
+     * serviço no projeto → monitor no serviço), 404 genérico em qualquer
+     * nível ausente e leitura permitida mesmo com pais inativos.
+     *
+     * <p><b>Ordem FIXA, sem {@code sort}:</b> newest-first é contrato do
+     * servidor (janela de avaliação e histórico falam a mesma língua); o
+     * cliente escolhe apenas {@code page} (0-based) e {@code size}
+     * (1..100). {@code size} fora da faixa é o MESMO 400 da listagem de
+     * monitores — mesma rota, mesmo contrato.</p>
+     *
+     * @param page   0-based, default {@code 0}
+     * @param size   itens por página, default {@code 20}, máximo {@code 100}
+     */
+    @Transactional(readOnly = true)
+    public Page<MonitorCheckResponse> checks(
+            UUID projectId, UUID serviceId, UUID monitorId, int page, int size) {
+        Service service = requireParents(projectId, serviceId);
+        Monitor monitor = findMonitor(service, monitorId);
+        Pageable pageable = PageRequest.of(validatePage(page), validateSize(size));
+        return monitorCheckRepository
+                .findByMonitorIdOrderByStartedAtDesc(monitor.getId(), pageable)
+                .map(check -> MonitorCheckResponse.from(monitor.getId(), check));
     }
 
     // --- PATCH .../monitors/{monitorId} -------------------------------------

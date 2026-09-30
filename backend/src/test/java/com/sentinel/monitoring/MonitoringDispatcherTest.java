@@ -12,10 +12,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
+import com.sentinel.project.model.ServiceStatus;
 import com.sentinel.project.monitor.model.Monitor;
+import com.sentinel.project.monitor.model.MonitorCheck;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -150,7 +153,7 @@ class MonitoringDispatcherTest {
             }
         };
         MonitoringProperties properties = properties(4, 8);
-        dispatcher = new MonitoringDispatcher(properties, exploding);
+        dispatcher = new MonitoringDispatcher(properties, exploding, recorder(), evaluator());
         Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
 
         assertThat(dispatcher.tryDispatch(monitor))
@@ -167,6 +170,73 @@ class MonitoringDispatcherTest {
                 .isEqualTo(MonitoringDispatcher.DispatchOutcome.ACCEPTED);
         assertThat(dispatcher.awaitIdle(WAIT)).isTrue();
         assertThat(dispatcher.internalErrorCount()).isEqualTo(2);
+    }
+
+    // --- pipeline persistência → avaliação (Prompt 10) ---------------------
+
+    /**
+     * Fronteira entre as DUAS etapas do Prompt 10: se a persistência do
+     * histórico falhar, a avaliação de estado é <b>PULADA de propósito</b>
+     * (nada se calcula sobre histórico que não existe) e a task CONTINUA —
+     * in-flight liberado, erro interno contado, monitor despachável de novo.
+     */
+    @Test
+    void recorderFailureSkipsEvaluationAndKeepsTheMonitorUsable() {
+        RecordingCheckRecorder recorder = recorder();
+        recorder.failing = true;
+        RecordingEvaluator evaluator = evaluator();
+        dispatcher = new MonitoringDispatcher(
+                properties(4, 8),
+                new HttpMonitorExecutor(
+                        url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z")),
+                recorder,
+                evaluator);
+        Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
+
+        assertThat(dispatcher.tryDispatch(monitor))
+                .isEqualTo(MonitoringDispatcher.DispatchOutcome.ACCEPTED);
+        assertThat(dispatcher.awaitIdle(WAIT)).isTrue();
+
+        assertThat(recorder.recorded).isEmpty();
+        assertThat(evaluator.evaluated)
+                .as("sem histórico não há o que avaliar")
+                .isEmpty();
+        assertThat(dispatcher.internalErrorCount()).isEqualTo(1);
+        assertThat(dispatcher.inFlightCount()).isZero();
+
+        // release em finally: o monitor segue despachável
+        assertThat(dispatcher.tryDispatch(monitor))
+                .isEqualTo(MonitoringDispatcher.DispatchOutcome.ACCEPTED);
+        assertThat(dispatcher.awaitIdle(WAIT)).isTrue();
+        assertThat(dispatcher.dispatchedCount()).isEqualTo(2);
+    }
+
+    /**
+     * Recíproco: o histórico é DURÁVEL mesmo quando a avaliação falha — a
+     * task não propaga a exceção, o pool não morre e o estado é recalculado
+     * no próximo check.
+     */
+    @Test
+    void evaluatorFailureKeepsPersistedHistoryAndReleasesTheMonitor() {
+        RecordingCheckRecorder recorder = recorder();
+        RecordingEvaluator evaluator = evaluator();
+        evaluator.failing = true;
+        dispatcher = new MonitoringDispatcher(
+                properties(4, 8),
+                new HttpMonitorExecutor(
+                        url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z")),
+                recorder,
+                evaluator);
+        Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
+
+        assertThat(dispatcher.tryDispatch(monitor))
+                .isEqualTo(MonitoringDispatcher.DispatchOutcome.ACCEPTED);
+        assertThat(dispatcher.awaitIdle(WAIT)).isTrue();
+
+        assertThat(recorder.recorded).hasSize(1);
+        assertThat(evaluator.evaluated).containsExactly(monitor.getId());
+        assertThat(dispatcher.internalErrorCount()).isEqualTo(1);
+        assertThat(dispatcher.inFlightCount()).isZero();
     }
 
     // --- awaitIdle ----------------------------------------------------------
@@ -213,7 +283,7 @@ class MonitoringDispatcherTest {
                 return result;
             }
         };
-        dispatcher = new MonitoringDispatcher(properties(4, 8), recording);
+        dispatcher = new MonitoringDispatcher(properties(4, 8), recording, recorder(), evaluator());
 
         Monitor slow = MonitorFixtures.monitor(SLOW_URL);
         Monitor fast = MonitorFixtures.monitor(FAST_URL);
@@ -282,7 +352,7 @@ class MonitoringDispatcherTest {
         MonitoringProperties properties = properties(workerCount, queueCapacity);
         HttpMonitorExecutor executor = new HttpMonitorExecutor(
                 url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z"));
-        return new MonitoringDispatcher(properties, executor);
+        return new MonitoringDispatcher(properties, executor, recorder(), evaluator());
     }
 
     private static MonitoringProperties properties(int workerCount, int queueCapacity) {
@@ -290,6 +360,59 @@ class MonitoringDispatcherTest {
         properties.setWorkerCount(workerCount);
         properties.setQueueCapacity(queueCapacity);
         return properties;
+    }
+
+    private static RecordingCheckRecorder recorder() {
+        return new RecordingCheckRecorder();
+    }
+
+    private static RecordingEvaluator evaluator() {
+        return new RecordingEvaluator();
+    }
+
+    /**
+     * Double de {@link MonitorCheckRecorder} sem banco: anota o que a task
+     * tentaria persistir e pode simular falha de infraestrutura.
+     */
+    private static final class RecordingCheckRecorder extends MonitorCheckRecorder {
+        final List<MonitorExecutionResult> recorded = new CopyOnWriteArrayList<>();
+        volatile boolean failing;
+
+        RecordingCheckRecorder() {
+            super(null, null);
+        }
+
+        @Override
+        public MonitorCheck record(
+                MonitorExecutionResult result) {
+            if (failing) {
+                throw new IllegalStateException("record boom");
+            }
+            recorded.add(result);
+            return null;
+        }
+    }
+
+    /**
+     * Double de {@link OperationalStateEvaluator} sem banco: anota a
+     * tentativa de avaliação e pode simular falha.
+     */
+    private static final class RecordingEvaluator extends OperationalStateEvaluator {
+        final List<UUID> evaluated = new CopyOnWriteArrayList<>();
+        volatile boolean failing;
+
+        RecordingEvaluator() {
+            super(null, null, null);
+        }
+
+        @Override
+        public ServiceStatus evaluate(UUID monitorId) {
+            evaluated.add(monitorId);
+            if (failing) {
+                throw new IllegalStateException("evaluate boom");
+            }
+            return null;
+        }
     }
 
     /**
