@@ -15,7 +15,8 @@
 | `Service.setStatusInternal` + `ServiceRepository.findByIdWithLock` + `MonitorRepository.findActiveIdsByServiceId` | Construído |
 | `GET .../monitors/{monitorId}/checks` (`MonitorCheckResponse` + `MonitorService.checks`) | Construído |
 | Frontend `listMonitorChecks` + histórico "Last checks" no detalhe do monitor | Construído |
-| Retenção/expurgo, séries temporais, uptime %, alertas e notificações | **Fora do escopo** (Prompt 11+) |
+| Séries temporais e agregados por período (métricas por faixa) | Construído no **Prompt 11** — ver [history-metrics.md](history-metrics.md) |
+| Retenção/expurgo, uptime %, alertas e notificações | **Fora do escopo** (Prompt 12+) |
 
 ## 2. Arquitetura
 
@@ -193,7 +194,7 @@ Travado por `MonitoringEngineBoundaryTest`:
 ## 11. Fora do escopo (prompts futuros)
 
 - Retenção/expurgo de `monitor_checks` (hoje cresce sem limite — decisão explícita de escopo).
-- Séries temporais, uptime %, agregados por período e gráficos.
+- Uptime % temporal do serviço como entidade própria e dashboards.
 - Alertas, notificações e incidentes (consumidores naturais de `Service.status`).
 - Métricas de aplicação (Micrometer) para contadores do motor e da avaliação.
 - Outros tipos de checagem (`PING`, `TCP`, `DNS`) — o `type` continua `HTTP`.

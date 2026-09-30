@@ -17,6 +17,7 @@ import {
   type ServiceResponse,
 } from "@/lib/api";
 import { handleUnauthorized, isUnauthorized, messageOf } from "@/lib/errors";
+import MetricsSection from "@/components/MetricsSection";
 
 type MonitorsStatus = "idle" | "loading" | "ready" | "error";
 
@@ -901,6 +902,18 @@ export default function MonitorsPanel({
                                 Read-only — your role cannot edit monitors.
                               </p>
                             )}
+
+                            {/* Métricas históricas do monitor (Prompt 11) —
+                                `key` nasce limpo por monitor (trocar o
+                                expandido sem fechar descarta o estado). */}
+                            <MetricsSection
+                              key={`metrics-${monitor.id}`}
+                              title="Monitor metrics"
+                              organizationId={orgId}
+                              projectId={projectId}
+                              serviceId={serviceId}
+                              monitorId={monitor.id}
+                            />
 
                             {/* Histórico de checagens (Prompt 10): somente
                                 leitura, ordenado pelo server (mais novo

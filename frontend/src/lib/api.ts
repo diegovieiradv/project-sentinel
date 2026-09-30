@@ -1353,3 +1353,147 @@ export async function listMonitorChecks(
     `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/monitors/${monitorId}/checks${buildMonitorCheckParams(params)}`
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* History & metrics (Prompt 11)                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Faixa temporal de métrica — literais do contrato de `range`
+ * (`1h | 6h | 24h | 7d | 30d`). Cada faixa fixa o tamanho do bucket e a
+ * quantidade de buckets no servidor; o cliente só escolhe a faixa.
+ */
+export type MetricsRange = "1h" | "6h" | "24h" | "7d" | "30d";
+
+/**
+ * Contagens brutas + taxas derivadas — o mesmo shape de `MetricsSummary`,
+ * `MetricsBucket` e `ServiceMetricsBreakdown` (todos espelham o record
+ * `MetricsSummary` do backend).
+ *
+ * `availability`/`successRate` são anuláveis: `null` significa "sem dados
+ * na janela" (zero checks relevantes) — o cliente NUNCA reconstrói
+ * porcentagem nem converte `null` em `0`. `sentinelInternalFailure` conta
+ * em `totalChecks`, mas fica FORA dos denominadores das taxas (falha do
+ * Sentinel não é evidência do alvo).
+ *
+ * `avgLatencyMs`/`minLatencyMs`/`maxLatencyMs` medem o tempo de resposta
+ * SÓ nos checks `SUCCESS`/`DEGRADED_SIGNAL` (falhas ficam de fora) e são
+ * `null` quando não há nenhum — nunca `0`. A média vem com 2 casas;
+ * min/max são inteiros em ms.
+ */
+export interface MetricsCounts {
+  totalChecks: number;
+  success: number;
+  degraded: number;
+  targetFailure: number;
+  sentinelInternalFailure: number;
+  availability: number | null;
+  successRate: number | null;
+  avgLatencyMs: number | null;
+  minLatencyMs: number | null;
+  maxLatencyMs: number | null;
+}
+
+/** Resumo da janela meia-aberta `[from, to)` — campos do `MetricsSummary`. */
+export type MetricsSummary = MetricsCounts;
+
+/**
+ * Um bucket da série temporal — grade completa (o servidor devolve TODOS os
+ * buckets da faixa, mesmo sem check: contagens zeradas e taxas `null`).
+ */
+export interface MetricsBucket extends MetricsCounts {
+  /** Início do intervalo (ISO-8601/UTC), truncado no tamanho do bucket. */
+  bucketStart: string;
+}
+
+/** Resposta de `GET .../monitors/{monitorId}/metrics`. */
+export interface MonitorMetricsResponse {
+  monitorId: string;
+  range: MetricsRange;
+  /** Janela EXATA usada no cálculo, meia-aberta `[from, to)` (ISO-8601). */
+  from: string;
+  to: string;
+  bucketSeconds: number;
+  summary: MetricsSummary;
+  /** Sempre `bucketCount` elementos, em ordem crescente de `bucketStart`. */
+  buckets: MetricsBucket[];
+}
+
+/**
+ * Uma linha do breakdown por monitor de `GET .../services/{serviceId}/metrics`
+ * — monitores sem nenhum check na janela NÃO aparecem (a soma das linhas
+ * fecha com o `summary` do serviço). Campos espelhados (planos), ordenados
+ * por nome no servidor.
+ */
+export interface ServiceMetricsBreakdown extends MetricsCounts {
+  monitorId: string;
+  monitorName: string;
+}
+
+/** Resposta de `GET .../services/{serviceId}/metrics` — três camadas. */
+export interface ServiceMetricsResponse {
+  serviceId: string;
+  range: MetricsRange;
+  /** Janela EXATA usada no cálculo, meia-aberta `[from, to)` (ISO-8601). */
+  from: string;
+  to: string;
+  bucketSeconds: number;
+  summary: MetricsSummary;
+  buckets: MetricsBucket[];
+  /** Breakdown por monitor, ordenado por nome — só monitores com check. */
+  monitors: ServiceMetricsBreakdown[];
+}
+
+/**
+ * Monta a query string do parâmetro `range` (helper puro — testável sem
+ * rede). Faixa ausente → `""` (o servidor aplica o default `24h`); valor
+ * presente → `?range=...` (o servidor valida e responde **400** para valor
+ * fora do contrato).
+ */
+export function buildMetricsRangeParams(range?: MetricsRange): string {
+  return range ? `?range=${range}` : "";
+}
+
+/**
+ * GET .../monitors/{monitorId}/metrics → **200** métricas agregadas do
+ * monitor sobre a janela pedida (resumo + grade de buckets; nunca linhas
+ * cruas nem configuração). Query: `range=1h|6h|24h|7d|30d` opcional
+ * (ausente → default `24h`; inválido → **400** `VALIDATION_ERROR`).
+ * **404** monitor de outro serviço/tenant (mesmo 404 genérico da cadeia).
+ *
+ * Leitura com qualquer papel e mesmo com o serviço/projeto pai inativo.
+ * O path já carrega a org, então o `apiFetch` NÃO injeta `X-Organization-Id`
+ * (mesmo motivo de `listMonitors`).
+ */
+export async function getMonitorMetrics(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  monitorId: string,
+  range?: MetricsRange
+): Promise<MonitorMetricsResponse> {
+  return apiFetch<MonitorMetricsResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/monitors/${monitorId}/metrics${buildMetricsRangeParams(range)}`
+  );
+}
+
+/**
+ * GET .../services/{serviceId}/metrics → **200** métricas agregadas do
+ * serviço (união dos checks de TODOS os monitores, ativos e inativos):
+ * resumo + grade de buckets + breakdown por monitor, tudo sobre a MESMA
+ * janela. Query: `range` opcional (idem acima). **404** serviço de outro
+ * projeto/tenant (mesmo 404 genérico da cadeia).
+ *
+ * Leitura com qualquer papel e mesmo com o serviço/projeto pai inativo.
+ * `Service.status` NÃO vem aqui — este endpoint é histórico, não estado.
+ */
+export async function getServiceMetrics(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  range?: MetricsRange
+): Promise<ServiceMetricsResponse> {
+  return apiFetch<ServiceMetricsResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/metrics${buildMetricsRangeParams(range)}`
+  );
+}

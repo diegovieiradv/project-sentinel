@@ -63,6 +63,11 @@ public abstract class AbstractMonitorIntegrationTest extends AbstractServiceInte
         return monitorUrl(organizationId, projectId, serviceId, monitorId) + "/checks";
     }
 
+    protected String monitorMetricsUrl(
+            String organizationId, String projectId, String serviceId, String monitorId) {
+        return monitorUrl(organizationId, projectId, serviceId, monitorId) + "/metrics";
+    }
+
     protected String monitorActivationUrl(
             String organizationId, String projectId, String serviceId, String monitorId) {
         return monitorUrl(organizationId, projectId, serviceId, monitorId) + "/activation";

@@ -14,6 +14,7 @@ import {
   type ServiceStatus,
 } from "@/lib/api";
 import { handleUnauthorized, isUnauthorized, messageOf } from "@/lib/errors";
+import MetricsSection from "@/components/MetricsSection";
 import MonitorsPanel from "@/components/MonitorsPanel";
 
 type ServicesStatus = "idle" | "loading" | "ready" | "error";
@@ -595,6 +596,17 @@ export default function ServicesPanel({
                                 Read-only — your role cannot edit services.
                               </p>
                             )}
+
+                            {/* Métricas históricas do serviço (Prompt 11) —
+                                `key` nasce limpo por serviço, mesmo padrão do
+                                MonitorsPanel abaixo. */}
+                            <MetricsSection
+                              key={`metrics-${service.id}`}
+                              title="Service metrics"
+                              organizationId={orgId}
+                              projectId={projectId}
+                              serviceId={service.id}
+                            />
 
                             {/* Monitors do serviço expandido (Prompt 08) —
                                 monta/desmonta com o serviço (`key={service.id}`),

@@ -43,6 +43,10 @@ public abstract class AbstractServiceIntegrationTest extends AbstractProjectInte
         return serviceUrl(organizationId, projectId, serviceId) + "/activation";
     }
 
+    protected String serviceMetricsUrl(String organizationId, String projectId, String serviceId) {
+        return serviceUrl(organizationId, projectId, serviceId) + "/metrics";
+    }
+
     // --- criação via API ----------------------------------------------------
 
     /** POST → 201, devolve o id. Descrição opcional: {@code null} omitida. */
