@@ -1497,3 +1497,319 @@ export async function getServiceMetrics(
     `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/metrics${buildMetricsRangeParams(range)}`
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Alert Rules (Prompt 12)                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Tipo da condição — espelha o enum `AlertRuleType` do backend. Cada tipo
+ * define o threshold permitido (percentual, latência, contagem ou status) e
+ * o conjunto de operadores válidos (a matriz type × operator é validada no
+ * backend; o cliente só espelha para feedback imediato).
+ */
+export type AlertRuleType =
+  | "AVAILABILITY"
+  | "SUCCESS_RATE"
+  | "AVERAGE_LATENCY"
+  | "TARGET_FAILURE_COUNT"
+  | "SERVICE_STATUS";
+
+/** Operador da comparação — espelha o enum `AlertOperator`. */
+export type AlertOperator =
+  | "LESS_THAN"
+  | "LESS_THAN_OR_EQUAL"
+  | "GREATER_THAN"
+  | "GREATER_THAN_OR_EQUAL"
+  | "EQUAL";
+
+/** Janela de avaliação — espelha o enum `EvaluationWindow` (só configuração; a avaliação é do Prompt 13). */
+export type EvaluationWindow =
+  | "FIVE_MINUTES"
+  | "FIFTEEN_MINUTES"
+  | "ONE_HOUR"
+  | "SIX_HOURS"
+  | "TWENTY_FOUR_HOURS";
+
+/** Severidade da regra — espelha o enum `AlertSeverity` (SEV1..SEV4). */
+export type AlertSeverity = "SEV1" | "SEV2" | "SEV3" | "SEV4";
+
+/**
+ * Resposta de regra de alerta (contrato de `AlertRuleResponse` do backend) —
+ * SÓ configuração: sem campo de resultado/firing (o Alert Engine é o
+ * Prompt 13 e não existe neste contrato).
+ *
+ * `monitorId: null` = Service-level (métrica agregada do serviço); com valor =
+ * Monitor-level (aquele monitor do MESMO serviço). O nome do monitor não vem
+ * aqui — a UI resolve via listagem de monitores. `thresholdNumeric` e
+ * `thresholdStatus` são mutuamente exclusivos (só um é preenchido, conforme
+ * o `type`).
+ */
+export interface AlertRuleResponse {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  serviceId: string;
+  monitorId: string | null;
+  name: string;
+  type: AlertRuleType;
+  operator: AlertOperator;
+  thresholdNumeric: number | null;
+  thresholdStatus: ServiceStatus | null;
+  window: EvaluationWindow;
+  severity: AlertSeverity;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Papel do usuário autenticado NA organização dona do serviço. */
+  role: OrganizationRole;
+}
+
+/**
+ * Corpo de criação — APENAS campos de configuração: `name`/`type`/`operator`/
+ * `window`/`severity` obrigatórios; `thresholdNumeric`/
+ * `thresholdStatus`/`monitorId` conforme o tipo. id, organizationId,
+ * projectId, serviceId, active e timestamps NUNCA entram no body.
+ */
+export interface AlertRuleCreateRequest {
+  name: string;
+  type: AlertRuleType;
+  operator: AlertOperator;
+  thresholdNumeric?: number | null;
+  thresholdStatus?: ServiceStatus | null;
+  window: EvaluationWindow;
+  severity: AlertSeverity;
+  monitorId?: string | null;
+}
+
+/**
+ * Corpo de edição (PATCH) — parcial: campo ausente permanece inalterado.
+ * Ao trocar o `type`, envie `type`+`operator`+threshold juntos (o backend
+ * revalida a condição efetiva completa); `monitorId` presente revalida o
+ * ownership (envie sempre o escopo escolhido no form).
+ */
+export interface AlertRuleUpdateRequest {
+  name?: string;
+  type?: AlertRuleType;
+  operator?: AlertOperator;
+  thresholdNumeric?: number;
+  thresholdStatus?: ServiceStatus;
+  window?: EvaluationWindow;
+  severity?: AlertSeverity;
+  monitorId?: string | null;
+}
+
+/** Corpo do PATCH `.../alert-rules/{ruleId}/activation` — idempotente. */
+export interface AlertRuleActivationRequest {
+  active: boolean;
+}
+
+/**
+ * Parâmetros da listagem de regras (Spring Page). `undefined`/string vazia é
+ * omitido da query string; boolean vira `"true"`/`"false"`; `type`, `severity`
+ * e `monitorId` filtram o escopo/condição.
+ */
+export interface AlertRuleListParams {
+  page?: number;
+  size?: number;
+  active?: boolean;
+  type?: AlertRuleType;
+  severity?: AlertSeverity;
+  monitorId?: string;
+  name?: string;
+  sort?: string;
+}
+
+/** Página Spring (`Page<AlertRuleResponse>`): fatia atual + totais. */
+export interface AlertRulePage {
+  content: AlertRuleResponse[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
+/**
+ * Monta a query string da listagem de regras (helper puro — testável sem rede).
+ *
+ * Regras: `undefined` e string vazia são omitidos (nunca `page=undefined`);
+ * boolean serializa como `"true"`/`"false"`; números entram decimais (`page=0`
+ * inclusive). Ordem fixa: page, size, active, type, severity, monitorId,
+ * name, sort. Retorna `""` sem params.
+ */
+export function buildAlertRuleListParams(params?: AlertRuleListParams): string {
+  if (!params) return "";
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.size !== undefined) query.set("size", String(params.size));
+  if (params.active !== undefined) query.set("active", String(params.active));
+  if (params.type) query.set("type", params.type);
+  if (params.severity) query.set("severity", params.severity);
+  if (params.monitorId) query.set("monitorId", params.monitorId);
+  if (params.name) query.set("name", params.name);
+  if (params.sort) query.set("sort", params.sort);
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * Body de criação com APENAS os campos informados — nunca id, organizationId,
+ * projectId, serviceId, active ou timestamps (vêm do path/autenticação).
+ * `undefined` nunca vira `null` no JSON (thresholds ausentes ≠ explícitos).
+ */
+function alertRuleCreateBody(
+  request: AlertRuleCreateRequest
+): AlertRuleCreateRequest {
+  const body: AlertRuleCreateRequest = {
+    name: request.name,
+    type: request.type,
+    operator: request.operator,
+    window: request.window,
+    severity: request.severity,
+  };
+  if (request.thresholdNumeric !== undefined) {
+    body.thresholdNumeric = request.thresholdNumeric;
+  }
+  if (request.thresholdStatus !== undefined) {
+    body.thresholdStatus = request.thresholdStatus;
+  }
+  if (request.monitorId !== undefined) body.monitorId = request.monitorId;
+  return body;
+}
+
+/**
+ * Body de edição (PATCH) com APENAS os campos informados — um campo ausente
+ * é herdado pelo backend (a troca de `type` envia a condição completa).
+ */
+function alertRuleUpdateBody(
+  request: AlertRuleUpdateRequest
+): AlertRuleUpdateRequest {
+  const body: AlertRuleUpdateRequest = {};
+  if (request.name !== undefined) body.name = request.name;
+  if (request.type !== undefined) body.type = request.type;
+  if (request.operator !== undefined) body.operator = request.operator;
+  if (request.thresholdNumeric !== undefined) {
+    body.thresholdNumeric = request.thresholdNumeric;
+  }
+  if (request.thresholdStatus !== undefined) {
+    body.thresholdStatus = request.thresholdStatus;
+  }
+  if (request.window !== undefined) body.window = request.window;
+  if (request.severity !== undefined) body.severity = request.severity;
+  if (request.monitorId !== undefined) body.monitorId = request.monitorId;
+  return body;
+}
+
+/**
+ * GET .../services/{serviceId}/alert-rules → **200** página Spring. Query:
+ * `page` (default 0), `size` (default 20, máx 100), `sort` (default do server),
+ * `active=true|false`, `type`, `severity`, `monitorId` e `name` (busca
+ * case-insensitive). **403** papel insuficiente | **404** cadeia do tenant.
+ *
+ * O path já carrega a org, então o `apiFetch` NÃO injeta `X-Organization-Id`
+ * (mesmo motivo de `listMonitors`). Leitura funciona mesmo com serviço/
+ * projeto pai inativo.
+ */
+export async function listAlertRules(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  params?: AlertRuleListParams
+): Promise<AlertRulePage> {
+  return apiFetch<AlertRulePage>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/alert-rules${buildAlertRuleListParams(params)}`
+  );
+}
+
+/**
+ * GET .../alert-rules/{ruleId} → **200** regra | **404** inexistente/outro
+ * tenant (mesmo 404 genérico da cadeia).
+ */
+export async function getAlertRule(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  ruleId: string
+): Promise<AlertRuleResponse> {
+  return apiFetch<AlertRuleResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/alert-rules/${ruleId}`
+  );
+}
+
+/**
+ * POST .../alert-rules → **201** regra criada (nasce `active=true`).
+ * Body APENAS campos de configuração. **400** `VALIDATION_ERROR` (matriz
+ * type × operator, faixa de threshold, nome) | **403** papel insuficiente |
+ * **404** serviço/projeto/org | **409** `ALERT_RULE_NAME_DUPLICATE`
+ * (mesmo nome normalizado no MESMO serviço, ativo OU inativo),
+ * `PROJECT_INACTIVE` ou `SERVICE_INACTIVE`.
+ */
+export async function createAlertRule(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  request: AlertRuleCreateRequest
+): Promise<AlertRuleResponse> {
+  return apiFetch<AlertRuleResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/alert-rules`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(alertRuleCreateBody(request)),
+    }
+  );
+}
+
+/**
+ * PATCH .../alert-rules/{ruleId} → **200** regra atualizada. Body parcial:
+ * só o que for informado muda (campo ausente é herdado). **400**
+ * `VALIDATION_ERROR` (condição efetiva revalidada por inteiro) | **403** |
+ * **404** | **409** `ALERT_RULE_NAME_DUPLICATE`, `PROJECT_INACTIVE` ou
+ * `SERVICE_INACTIVE`.
+ */
+export async function updateAlertRule(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  ruleId: string,
+  request: AlertRuleUpdateRequest
+): Promise<AlertRuleResponse> {
+  return apiFetch<AlertRuleResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/alert-rules/${ruleId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(alertRuleUpdateBody(request)),
+    }
+  );
+}
+
+/**
+ * PATCH .../alert-rules/{ruleId}/activation → **200** regra com o novo
+ * `active` (idempotente; desativar é sempre permitido — fail-safe).
+ * **403** papel insuficiente | **404** inexistente | **409** `PROJECT_INACTIVE`
+ * ou `SERVICE_INACTIVE` ao ATIVAR com o pai inativo.
+ */
+export async function activateAlertRule(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  ruleId: string,
+  active: boolean
+): Promise<AlertRuleResponse> {
+  const body: AlertRuleActivationRequest = { active };
+  return apiFetch<AlertRuleResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/alert-rules/${ruleId}/activation`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+}

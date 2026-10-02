@@ -162,4 +162,178 @@ class MonitoringEngineBoundaryTest {
                 .as("status do serviço só muda pelo OperationalStateEvaluator")
                 .containsExactly("OperationalStateEvaluator.java");
     }
+
+    // ------------------------------------------------------------------
+    // Prompt 12 — Alert Rules: a CONFIGURAÇÃO persiste; o ENGINE não.
+    //
+    // A fronteira ganhou UMA entidade nova (AlertRule, V9) e mantém o
+    // bloqueio do que é do Prompt 13: Alert (resultado avaliado),
+    // Engine/Evaluator/Scheduler/Firing, notificações e incidentes.
+    // ------------------------------------------------------------------
+
+    /** Migration aditiva do Prompt 12 (a única fora de V1..V8). */
+    private static final String ALERT_RULES_MIGRATION = "V9__create_alert_rules_table.sql";
+
+    @Test
+    void alertRuleEntityIsMappedToAlertRulesTable() throws IOException {
+        assertThat(scanEntities(name -> name.endsWith(".AlertRule")))
+                .as("existe UMA entidade AlertRule, no pacote alert.model")
+                .containsExactly("com.sentinel.project.alert.model.AlertRule");
+
+        String source = Files.readString(
+                Path.of("src/main/java/com/sentinel/project/alert/model/AlertRule.java"));
+        assertThat(source)
+                .as("a entidade é mapeada na tabela alert_rules")
+                .contains("@Table(name = \"alert_rules\")");
+    }
+
+    @Test
+    void alertRulesMigrationIsConfigBoundedAndWithoutFiringColumns() throws IOException {
+        Path migrationDir = Path.of("src/main/resources/db/migration");
+        String full = Files.readString(migrationDir.resolve(ALERT_RULES_MIGRATION))
+                .toLowerCase(Locale.ROOT);
+        String sql = full.lines()
+                .filter(line -> !line.trim().startsWith("--"))
+                .collect(java.util.stream.Collectors.joining("\n"));
+
+        // uma tabela só, de CONFIGURAÇÃO (updated_at existe porque a regra
+        // é editável via PATCH — ao contrário do append-only do V8)
+        assertThat(sql).contains("create table alert_rules");
+        assertThat(sql.split("create table").length - 1).as("uma tabela por migration").isEqualTo(1);
+        assertThat(sql).contains("updated_at timestamptz not null");
+
+        // FKs: serviço obrigatório, monitor opcional, ambas com RESTRICT
+        assertThat(sql)
+                .contains("service_id uuid not null references services (id) on delete restrict");
+        assertThat(sql)
+                .contains("monitor_id uuid references monitors (id) on delete restrict");
+
+        // NENHUMA coluna de resultado avaliado — quem dispara fica no Prompt 13
+        assertThat(sql)
+                .as("V9 não cria colunas de firing/avaliação")
+                .doesNotContain("fired_at")
+                .doesNotContain("resolved_at")
+                .doesNotContain("evaluated_at")
+                .doesNotContain("current_value")
+                .doesNotContain("alert_state")
+                .doesNotContain("notified_at");
+    }
+
+    @Test
+    void noAlertEntityExists() {
+        assertThat(scanEntities(name -> name.endsWith(".Alert")))
+                .as("resultado avaliado (Prompt 13) não existe: nenhuma entidade Alert")
+                .isEmpty();
+    }
+
+    @Test
+    void noAlertEngineOrEvaluatorExists() throws IOException {
+        List<String> engineClasses = scanClassNames(name -> {
+            String simple = name.substring(name.lastIndexOf('.') + 1);
+            return name.startsWith("com.sentinel.")
+                    && (simple.contains("AlertEngine")
+                            || (name.contains(".alert.") && simple.contains("Engine"))
+                            || simple.contains("RuleEvaluator")
+                            || simple.contains("AlertScheduler")
+                            || simple.contains("Firing"));
+        });
+
+        assertThat(engineClasses)
+                .as("avaliação/scheduler/firing ficam no Prompt 13 — nenhum classe aqui")
+                .isEmpty();
+
+        // Fortalecimento (Reviewer): tokens proibidos em QUALQUER classe do
+        // pacote de configuração alert — case-insensitive.
+        List<String> alertTokenClasses = scanClassNames(name -> {
+            if (!name.startsWith("com.sentinel.project.alert.")) {
+                return false;
+            }
+            String simple = name.substring(name.lastIndexOf('.') + 1)
+                    .toLowerCase(Locale.ROOT);
+            // único nome legítimo que contém o token: enum de CONFIGURAÇÃO
+            // das janelas de avaliação (não avalia nada)
+            if (simple.equals("evaluationwindow")) {
+                return false;
+            }
+            return simple.contains("scheduler")
+                    || simple.contains("firing")
+                    || simple.contains("evaluat");
+        });
+
+        assertThat(alertTokenClasses)
+                .as("o pacote alert é só configuração — sem Scheduler/Firing/Evaluator*")
+                .isEmpty();
+    }
+
+    /**
+     * Varredura de FONTE: o pacote de configuração não agenda nem dispara
+     * trabalho em background — {@code @Scheduled}/{@code @Async} são do
+     * engine (Prompt 13). Varredura limitada ao pacote alert porque o
+     * módulo de monitoramento tem um {@code @Scheduled} legítimo
+     * ({@code MonitoringScheduler}).
+     */
+    @Test
+    void alertPackageHasNoScheduledOrAsyncAnnotations() throws IOException {
+        Path alertDir = Path.of("src/main/java/com/sentinel/project/alert");
+        assertThat(Files.isDirectory(alertDir))
+                .as("pacote alert existe (execução a partir da raiz do módulo)")
+                .isTrue();
+
+        List<String> offenders = new ArrayList<>();
+        try (Stream<Path> walk = Files.walk(alertDir)) {
+            List<Path> sources = walk.filter(p -> p.toString().endsWith(".java")).toList();
+            assertThat(sources).as("fontes do pacote alert legíveis").isNotEmpty();
+            for (Path source : sources) {
+                String content = Files.readString(source);
+                if (content.contains("@Scheduled") || content.contains("@Async")) {
+                    offenders.add(source.getFileName().toString());
+                }
+            }
+        }
+
+        assertThat(offenders)
+                .as("nada no pacote alert agenda (@Scheduled) ou assíncrono (@Async)")
+                .isEmpty();
+    }
+
+    @Test
+    void noNotificationEntitiesExist() {
+        assertThat(scanEntities(name -> name.contains("Notification")))
+                .as("notificações (email/Slack/webhook) ficam num prompt futuro")
+                .isEmpty();
+    }
+
+    @Test
+    void noIncidentEntitiesExist() {
+        assertThat(scanEntities(name -> name.contains("Incident")))
+                .as("Incident/IncidentEvent ficam num prompt futuro")
+                .isEmpty();
+    }
+
+    /** Todas as entidades JPA cujo nome de classe casa com o predicado. */
+    private static List<String> scanEntities(java.util.function.Predicate<String> match) {
+        return scan(match, true);
+    }
+
+    /** Todas as classes do classpath (com ou sem @Entity) que casam. */
+    private static List<String> scanClassNames(java.util.function.Predicate<String> match) {
+        return scan(match, false);
+    }
+
+    private static List<String> scan(java.util.function.Predicate<String> match, boolean entitiesOnly) {
+        ClassPathScanningCandidateComponentProvider scanner =
+                new ClassPathScanningCandidateComponentProvider(false);
+        List<String> hits = new ArrayList<>();
+        scanner.addIncludeFilter((metadataReader, factory) -> {
+            String className = metadataReader.getClassMetadata().getClassName();
+            boolean isEntity = metadataReader.getAnnotationMetadata()
+                    .hasAnnotation("jakarta.persistence.Entity");
+            if ((!entitiesOnly || isEntity) && match.test(className)) {
+                hits.add(className);
+            }
+            return true;
+        });
+        scanner.findCandidateComponents("com.sentinel");
+        return hits;
+    }
 }
