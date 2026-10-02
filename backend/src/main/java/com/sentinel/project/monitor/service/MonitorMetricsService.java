@@ -168,8 +168,48 @@ public class MonitorMetricsService {
                 window.bucketSeconds(), summary, buckets, breakdown);
     }
 
-    // --- cadeia Organization → Project → Service → Monitor ------------------
+    // --- janela arbitrária para o Alert Engine (Prompt 13) ------------------
 
+    /**
+     * Resumo de uma janela QUALQUER de UM serviço — reutilização sem
+     * duplicação das fórmulas do Prompt 11 pelo Alert Engine.
+     *
+     * <p><b>Por que público:</b> o engine precisa das MESMAS fórmulas
+     * (availability/successRate/avgLatency com denominador de relevantes e
+     * arredondamento HALF_UP) e reimplementá-las seria fonte dupla de
+     * verdade. Aqui apenas chama
+     * {@code summaryByService} + {@link #toSummary} — nada de novo é
+     * calculado.</p>
+     *
+     * <p><b>Sem cadeia de tenant:</b> é chamada pelo motor interno (já dentro
+     * do serviço resolvido), não pela API. Janela meia-aberta
+     * {@code [from, to)} arbitrária — ao contrário da resposta HTTP, que se
+     * alinha à grade de buckets, o engine recorta em
+     * {@code agora − window.seconds}.</p>
+     *
+     * @param serviceId serviço dono
+     * @param from      início da janela (incluso)
+     * @param to        fim da janela (excluso)
+     */
+    @Transactional(readOnly = true)
+    public MetricsSummary windowSummaryByService(UUID serviceId, Instant from, Instant to) {
+        return toSummary(monitorCheckRepository.summaryByService(serviceId, from, to));
+    }
+
+    /**
+     * Resumo de uma janela QUALQUER de UM monitor — análogo de
+     * {@link #windowSummaryByService} para as regras com escopo de monitor.
+     *
+     * @param monitorId monitor dono do escopo
+     * @param from      início da janela (incluso)
+     * @param to        fim da janela (excluso)
+     */
+    @Transactional(readOnly = true)
+    public MetricsSummary windowSummaryByMonitor(UUID monitorId, Instant from, Instant to) {
+        return toSummary(monitorCheckRepository.summaryByMonitor(monitorId, from, to));
+    }
+
+    // --- cadeia Organization → Project → Service → Monitor ------------------
     /**
      * Espelho EXATO da cadeia de leitura do {@code MonitorService} (cujos
      * métodos são privados): projeto dentro do tenant → serviço dentro do

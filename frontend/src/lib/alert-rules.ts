@@ -399,8 +399,20 @@ export function ruleScopeLabel(
   return name ? `Monitor: ${name}` : `Monitor: ${rule.monitorId.slice(0, 8)}`;
 }
 
-/** Condição em uma linha legível, ex.: `Availability < 99.9 %`. */
-export function thresholdSummary(rule: AlertRuleResponse): string {
+/**
+ * Condição em uma linha legível, ex.: `Availability < 99.9 %`.
+ *
+ * Aceita o shape que TEM os quatro campos da condição — a regra inteira
+ * (`AlertRuleResponse`) OU o snapshot de um alerta adaptado em
+ * `alerts.ts::alertCondition` (Prompt 13). Assim a formatação da condição
+ * existe UMA vez só para regra e alerta.
+ */
+export function thresholdSummary(
+  rule: Pick<
+    AlertRuleResponse,
+    "type" | "operator" | "thresholdNumeric" | "thresholdStatus"
+  >
+): string {
   const type = TYPE_LABELS[rule.type];
   const operator = OPERATOR_LABELS[rule.operator];
   if (rule.type === "SERVICE_STATUS") {

@@ -32,8 +32,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * completo, identidade byte das V1..V8 e estrutura da tabela
  * {@code alert_rules}.
  *
- * <p>Catálogo limitado a V1..V9 (nenhuma migration além da do prompt); V1..V8
- * precisam estar <b>byte-idênticas</b> ao baseline do repositório (SHA-256
+ * <p>Catálogo limitado a V1..V10 (nenhuma migration além das dos Prompts 12 e
+ * 13 — a V10 é do Alert Engine e é coberta pelo AlertMigrationTest, que também
+ * prova V1..V9 byte-idênticas); V1..V8 precisam estar <b>byte-idênticas</b> ao
+ * baseline do repositório (SHA-256
  * fixado aqui — qualquer toque destrói o checksum do Flyway); e a V9 precisa
  * trazer as FKs {@code ON DELETE RESTRICT}, os CHECKs de domínio e os índices
  * do contrato. Os testes de Integração provam que o Flyway VALIDA o catálogo
@@ -78,7 +80,7 @@ class AlertRuleMigrationTest {
     @Autowired
     private DataSource dataSource;
 
-    // --- 91: catálogo V1..V9 -------------------------------------------------
+    // --- 91: catálogo V1..V10 ------------------------------------------------
 
     @Test
     void migrationsV1ToV9Exist() throws IOException {
@@ -88,14 +90,14 @@ class AlertRuleMigrationTest {
                 .as("nomes no padrão Flyway V<n>__*.sql")
                 .allMatch(name -> name.matches("V\\d+__[a-z0-9_]+\\.sql"));
 
-        // catálogo EXATO: V1..V9, nada além da migration do prompt
+        // catálogo EXATO: V1..V9 (baseline) + V10 (Alert Engine, P13), nada além
         List<Integer> versions = migrations.stream()
                 .map(name -> Integer.parseInt(name.substring(1, name.indexOf("__"))))
                 .sorted()
                 .toList();
         assertThat(versions)
-                .as("catálogo termina na V9 (V1..V8 originais + V9 do prompt)")
-                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9);
+                .as("catálogo termina na V10 (V1..V9 preservadas + V10 do Prompt 13)")
+                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
     }
 
     // --- 92: V1..V8 byte-idênticas ------------------------------------------
@@ -206,10 +208,10 @@ class AlertRuleMigrationTest {
         List<Map<String, Object>> rows = new JdbcTemplate(dataSource).queryForList(
                 "SELECT version, success FROM flyway_schema_history ORDER BY installed_rank");
 
-        assertThat(rows).hasSize(9);
+        assertThat(rows).hasSize(10);
         assertThat(rows)
                 .extracting(row -> String.valueOf(row.get("version")))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
         assertThat(rows)
                 .as("nenhuma migration falhou (o Hibernate ddl-auto=validate subiu no mesmo boot)")
                 .extracting(row -> row.get("success"))

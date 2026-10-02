@@ -2,7 +2,7 @@
 
 **Plataforma multi-tenant de observabilidade e gerenciamento de incidentes** — em construção.
 
-> **Aviso: este é o Prompt 08 de 18 — Monitors (configuração de monitoramento de um serviço). Coleta de dados de saúde, alertas e incidentes NÃO existem ainda.**
+> **Aviso: este é o Prompt 13 de 18 — Alert Engine (avaliação das regras de alerta e entidade `Alert`). Notificações, incidentes e dashboards NÃO existem ainda.**
 
 ## Estado atual
 
@@ -15,7 +15,8 @@
 - **Prompt 07 — services**: serviços de cada projeto em `/api/v1/organizations/{organizationId}/projects/{projectId}/services` (criar, listar com paginação/filtros `active`/`status`/`name`, detalhar, atualizar e ativar/desativar), entidades `Service`/`ServiceStatus` no mesmo pacote `com.sentinel.project`, tabela `services` (`V6`), unicidade de nome **por projeto** em duas camadas (`409 SERVICE_NAME_DUPLICATE`, inclusive sob concorrência), autorização encadeada Organization → Project → Service em duas consultas tenant-scoped (nunca `findById` avulso), projeto inativo → leitura `200` × mutação `409 PROJECT_INACTIVE`, `status` (`UNKNOWN` por padrão) como eixo de **servidor sem endpoint de alteração**, `DELETE` → `405`. Contrato em [docs/services.md](docs/services.md).
 - **Prompt 08 — monitors**: monitores HTTP/HTTPS de cada serviço em `/api/v1/organizations/{organizationId}/projects/{projectId}/services/{serviceId}/monitors` (criar, listar com paginação/filtros `active`/`method`/`name`, detalhar, atualizar e ativar/desativar), quarto nível da hierarquia Organization → Project → Service → Monitor, sub-pacote `com.sentinel.project.monitor` + guarda SSRF em `com.sentinel.project.security`, tabela `monitors` (`V7`), unicidade de nome **por serviço** em duas camadas (`409 MONITOR_NAME_DUPLICATE`, inclusive sob concorrência), autorização encadeada em três consultas tenant-scoped (nunca `findById` avulso), pais inativos → leitura `200` × mutação `409 PROJECT_INACTIVE`/`409 SERVICE_INACTIVE` com desativação fail-safe, alvo privado/loopback recusado **antes de persistir** (`400 MONITOR_TARGET_NOT_ALLOWED`), `type=HTTP` como eixo de servidor sem endpoint de alteração, `DELETE` → `405`. A **execução** das checagens, resultados e status operacional continuam **fora do escopo** (Prompt 09+). Contrato em [docs/monitors.md](docs/monitors.md).
 - **Prompt 12 — alert rules**: regras de alerta de cada serviço em `/api/v1/organizations/{organizationId}/projects/{projectId}/services/{serviceId}/alert-rules` (criar, listar com paginação/filtros `active`/`type`/`severity`/`monitorId`/`name`, detalhar, atualizar e ativar/desativar), quinto nível da hierarquia Organization → Project → Service → AlertRule com escopo opcional de Monitor do mesmo serviço, sub-pacote `com.sentinel.project.alert` + `AlertRuleValidationMatrix` (matriz type × operator, faixas de threshold e exclusividade numérico × status), tabela `alert_rules` (`V9`), unicidade de nome **por serviço** em duas camadas (`409 ALERT_RULE_NAME_DUPLICATE`, inclusive sob concorrência), autorização encadeada em quatro consultas tenant-scoped (nunca `findById` avulso), pais inativos → leitura `200` × mutação `409 PROJECT_INACTIVE`/`409 SERVICE_INACTIVE` com desativação fail-safe, ativação idempotente, `DELETE` → `405` e painel no detalhe do serviço (`AlertRulesPanel`). A **avaliação** das regras, disparo (`firing`), entidade `Alert` e notificações continuam **fora do escopo** (Prompt 13+). Contrato em [docs/alert-rules.md](docs/alert-rules.md).
-- **Ainda NÃO existem**: avaliação e disparo das regras de alerta, incidentes, dashboards, trilha de auditoria, recuperação de senha, verificação de e-mail nem MFA.
+- **Prompt 13 — alert engine**: avaliação das regras a cada checagem do serviço e o resultado avaliado — sem endpoint de escrita e sem scheduler próprio (o tick é o do monitoring): tabela `alerts` + eixo `services.status_changed_at` (migration `V10`, aditiva), entidade `Alert` com **snapshot da condição** (tipo, operador, thresholds, janela e severidade únicos do disparo), pacote `com.sentinel.alerting` (`AlertEngine`, `RuleEvaluator`, `OperatorEvaluator`, `AlertLifecycleService`), os 4 tipos numéricos reaproveitando as fórmulas do Prompt 11, `SERVICE_STATUS` com os 4 resultados (incluindo a janela do eixo `status_changed_at`), deduplicação em duas camadas (pré-check + índice parcial único), ciclo `FIRING → RESOLVED` com resolução `AUTO`/`RULE_DEACTIVATED`/`PARENT_INACTIVE`, NO_DATA/ERROR nunca resolvem, isolamento por regra/monitor/etapa, leitura em `GET .../services/{serviceId}/alerts` e `GET .../alerts/{alertId}` (`405` nos verbos de escrita) e painel somente-leitura `AlertsPanel` no detalhe do serviço. **Notificações, incidentes, ack, silenciamento e escalonamento** continuam **fora do escopo** (Prompt 14+). Contrato em [docs/alert-engine.md](docs/alert-engine.md).
+- **Ainda NÃO existem**: notificações, incidentes, dashboards, trilha de auditoria, recuperação de senha, verificação de e-mail nem MFA.
 
 > O **frontend foi adaptado** a este contrato: access token em memória + header `Authorization: Bearer`, refresh token em cookie `HttpOnly`, CSRF por header `X-XSRF-TOKEN` e bootstrap de sessão via `POST /api/v1/auth/refresh`. No Prompt 04 ele também passou a listar/criar/selecionar organizações e gerenciar membros.
 
@@ -115,6 +116,7 @@ project-sentinel/
 ├── docker-compose.yml        # apenas PostgreSQL 17 (porta 5433)
 ├── README.md
 ├── docs/
+│   ├── alert-engine.md           # contrato do alert engine do Prompt 13
 │   ├── alert-rules.md            # contrato de alert rules do Prompt 12
 │   ├── architecture-foundation.md
 │   ├── identity.md               # contrato de auth do Prompt 03 (stateless)
@@ -136,11 +138,14 @@ project-sentinel/
 │       │   ├── organization/ # multi-tenancy: context/ (TenantContext), model/
 │       │   │                 #   (Organization, Membership, Role), dto/, repository/,
 │       │   │                 #   service/ e web/ (controllers + TenantInterceptor)
+│       │   ├── alerting/     # Alert Engine do Prompt 13: engine, avaliador,
+│       │   │                 #   lifecycle e gatilho (fora do pacote de domínio)
 │       │   └── project/      # projetos, serviços E monitors: model/ (Project, Service,
 │       │                     #   ServiceStatus), repository/, dto/, service/ e web/
-│       │                     #   (controllers @TenantScoped) + monitor/ (Prompt 08) e
+│       │                     #   (controllers @TenantScoped) + monitor/ (Prompt 08),
+│       │                     #   alert/ (regras P12 + entidade Alert P13) e
 │       │                     #   security/ (guarda SSRF)
-│       ├── main/resources/   # application*.yml + Flyway migrations (V1–V7)
+│       ├── main/resources/   # application*.yml + Flyway migrations (V1–V10)
 │       └── test/java/        # testes JUnit 5 + Testcontainers (identity, organization, project, error, health)
 └── frontend/                 # Next.js — login/register/home + organizações e membros
 ```
@@ -184,12 +189,12 @@ Corpo JSON malformado, campo com tipo errado ou parâmetro de caminho fora do ti
 
 Todas as respostas do Spring Security trazem `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY`.
 
-Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md) (auth), [docs/organizations.md](docs/organizations.md) (multi-tenancy), [docs/projects.md](docs/projects.md) (projetos), [docs/services.md](docs/services.md) (serviços), [docs/monitors.md](docs/monitors.md) (monitors) e [docs/alert-rules.md](docs/alert-rules.md) (alert rules).
+Detalhes de contrato, erros e decisões: [docs/identity.md](docs/identity.md) (auth), [docs/organizations.md](docs/organizations.md) (multi-tenancy), [docs/projects.md](docs/projects.md) (projetos), [docs/services.md](docs/services.md) (serviços), [docs/monitors.md](docs/monitors.md) (monitors), [docs/alert-rules.md](docs/alert-rules.md) (alert rules) e [docs/alert-engine.md](docs/alert-engine.md) (alert engine).
 
 ## Documentação de arquitetura
 
-Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, [docs/identity.md](docs/identity.md) para o contrato de autenticação, [docs/organizations.md](docs/organizations.md) para o contrato multi-tenant (organizações, membros e Tenant Context), [docs/projects.md](docs/projects.md) para o contrato de projetos, [docs/services.md](docs/services.md) para o contrato de serviços, [docs/monitors.md](docs/monitors.md) para o contrato de monitors e [docs/alert-rules.md](docs/alert-rules.md) para o contrato de alert rules.
+Ver [docs/architecture-foundation.md](docs/architecture-foundation.md) para decisões arquiteturais e fronteiras modulares planejadas, [docs/identity.md](docs/identity.md) para o contrato de autenticação, [docs/organizations.md](docs/organizations.md) para o contrato multi-tenant (organizações, membros e Tenant Context), [docs/projects.md](docs/projects.md) para o contrato de projetos, [docs/services.md](docs/services.md) para o contrato de serviços, [docs/monitors.md](docs/monitors.md) para o contrato de monitors, [docs/alert-rules.md](docs/alert-rules.md) para o contrato de alert rules e [docs/alert-engine.md](docs/alert-engine.md) para o contrato do alert engine.
 
 ---
 
-**Prompt 12 de 18 — Alert Rules (configuração de regras de alerta de um serviço).** Avaliação/disparo das regras, entidade Alert, notificações e incidentes NÃO existem ainda.
+**Prompt 13 de 18 — Alert Engine (avaliação das regras de alerta e entidade `Alert`).** Notificações, incidentes e dashboards NÃO existem ainda.

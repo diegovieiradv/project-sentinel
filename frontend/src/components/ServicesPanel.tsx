@@ -14,6 +14,7 @@ import {
   type ServiceStatus,
 } from "@/lib/api";
 import { handleUnauthorized, isUnauthorized, messageOf } from "@/lib/errors";
+import AlertsPanel from "@/components/AlertsPanel";
 import AlertRulesPanel from "@/components/AlertRulesPanel";
 import MetricsSection from "@/components/MetricsSection";
 import MonitorsPanel from "@/components/MonitorsPanel";
@@ -614,6 +615,14 @@ export default function ServicesPanel({
                                 estado nasce limpo por serviço. */}
                             <AlertRulesPanel
                               key={`alert-rules-${service.id}`}
+                              service={service}
+                            />
+
+                            {/* Alertas disparados do serviço (Prompt 13) —
+                                monta/desmonta com o serviço (`key={service.id}`),
+                                estado nasce limpo por serviço. Somente leitura. */}
+                            <AlertsPanel
+                              key={`alerts-${service.id}`}
                               service={service}
                             />
 

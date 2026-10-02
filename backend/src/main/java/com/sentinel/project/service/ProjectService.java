@@ -3,10 +3,12 @@ package com.sentinel.project.service;
 import java.util.List;
 import java.util.UUID;
 
+import com.sentinel.alerting.AlertLifecycleService;
 import com.sentinel.error.ApiException;
 import com.sentinel.organization.context.TenantContext;
 import com.sentinel.organization.model.Organization;
 import com.sentinel.organization.model.Role;
+import com.sentinel.project.alert.model.AlertResolutionReason;
 import com.sentinel.project.dto.ProjectCreateRequest;
 import com.sentinel.project.dto.ProjectResponse;
 import com.sentinel.project.dto.ProjectStatusRequest;
@@ -59,9 +61,12 @@ public class ProjectService {
     private static final List<String> SORT_FIELDS = List.of("createdAt", "name", "id");
 
     private final ProjectRepository projectRepository;
+    private final AlertLifecycleService alertLifecycleService;
 
-    public ProjectService(ProjectRepository projectRepository) {
+    public ProjectService(
+            ProjectRepository projectRepository, AlertLifecycleService alertLifecycleService) {
         this.projectRepository = projectRepository;
+        this.alertLifecycleService = alertLifecycleService;
     }
 
     // --- POST .../projects --------------------------------------------------
@@ -189,7 +194,14 @@ public class ProjectService {
         }
 
         project.setActive(target);
-        return ProjectResponse.from(projectRepository.saveAndFlush(project), role);
+        Project saved = projectRepository.saveAndFlush(project);
+        if (!target) {
+            // Desativação congela o projeto inteiro: fecha com PARENT_INACTIVE
+            // os alertas abertos de TODOS os serviços (Prompt 13).
+            alertLifecycleService.resolveOpenForProject(
+                    projectId, AlertResolutionReason.PARENT_INACTIVE);
+        }
+        return ProjectResponse.from(saved, role);
     }
 
     // --- autorização --------------------------------------------------------

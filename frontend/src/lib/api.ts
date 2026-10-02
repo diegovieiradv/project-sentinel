@@ -1813,3 +1813,132 @@ export async function activateAlertRule(
     }
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Alerts (Prompt 13)                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Status do ciclo de vida de UM alerta — espelha o enum `AlertStatus` do
+ * backend. `FIRING` = condição vale agora; `RESOLVED` = foi encerrado (a
+ * mensagem do disparo permanece intacta no histórico).
+ */
+export type AlertStatus = "FIRING" | "RESOLVED";
+
+/**
+ * Motivo de resolução — espelha `AlertResolutionReason`. `AUTO` = métrica
+ * voltou ao normal; `RULE_DEACTIVATED` = regra desligada com alerta aberto;
+ * `PARENT_INACTIVE` = serviço/projeto congelado. `null` enquanto FIRING.
+ */
+export type AlertResolutionReason = "AUTO" | "RULE_DEACTIVATED" | "PARENT_INACTIVE";
+
+/**
+ * Resposta de UM alerta disparado (contrato de `AlertResponse` do backend) —
+ * leitura pura: não existe POST/PATCH/DELETE de alerta na API.
+ *
+ * Os campos `rule*` são o SNAPSHOT da condição na época do disparo (editar a
+ * regra depois não reescreve o alerta). `monitorId: null` = escopo
+ * Service-level. `triggerValue` é a evidência numérica que estourou (pode ser
+ * `null`, ex.: `SERVICE_STATUS`); `message` é a do disparo em QUALQUER
+ * desfecho — a resolução só preenche `resolutionReason`/`resolvedAt`.
+ */
+export interface AlertResponse {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  serviceId: string;
+  alertRuleId: string;
+  monitorId: string | null;
+  ruleName: string;
+  status: AlertStatus;
+  severity: AlertSeverity;
+  resolutionReason: AlertResolutionReason | null;
+  startedAt: string;
+  resolvedAt: string | null;
+  lastEvaluatedAt: string;
+  triggerValue: number | null;
+  message: string;
+  ruleType: AlertRuleType;
+  ruleOperator: AlertOperator;
+  ruleThresholdNumeric: number | null;
+  ruleThresholdStatus: ServiceStatus | null;
+  ruleWindow: EvaluationWindow;
+  createdAt: string;
+  updatedAt: string;
+  /** Papel do usuário autenticado NA organização dona do serviço. */
+  role: OrganizationRole;
+}
+
+/**
+ * Parâmetros da listagem de alertas (Spring Page). Só existem os dois
+ * filtros do contrato — `status` e `severity` (a ordem é fixa no server,
+ * não há `sort`); `undefined`/string vazia é omitido.
+ */
+export interface AlertListParams {
+  page?: number;
+  size?: number;
+  status?: AlertStatus;
+  severity?: AlertSeverity;
+}
+
+/** Página Spring (`Page<AlertResponse>`): fatia atual + totais. */
+export interface AlertPage {
+  content: AlertResponse[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
+/**
+ * Monta a query string da listagem de alertas (helper puro — testável sem
+ * rede). Regras iguais à das regras: `undefined` omitido, números decimais
+ * (`page=0` inclusive), ordem fixa page, size, status, severity. `""` sem
+ * params.
+ */
+export function buildAlertListParams(params?: AlertListParams): string {
+  if (!params) return "";
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.size !== undefined) query.set("size", String(params.size));
+  if (params.status) query.set("status", params.status);
+  if (params.severity) query.set("severity", params.severity);
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * GET .../services/{serviceId}/alerts → **200** página Spring. Query:
+ * `page` (default 0), `size` (default 20, máx 100), `status`
+ * (`FIRING|RESOLVED`), `severity` (`SEV1`..`SEV4`) — valor de enum inválido
+ * vira **400** no server. Ordem fixa: `startedAt desc, id desc`.
+ *
+ * O path já carrega a org, então o `apiFetch` NÃO injeta `X-Organization-Id`
+ * (mesmo motivo de `listAlertRules`). Leitura funciona com serviço/projeto
+ * pai inativo (histórico é histórico).
+ */
+export async function listAlerts(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  params?: AlertListParams
+): Promise<AlertPage> {
+  return apiFetch<AlertPage>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/alerts${buildAlertListParams(params)}`
+  );
+}
+
+/**
+ * GET .../alerts/{alertId} → **200** alerta | **404** inexistente/outro
+ * tenant (mesmo 404 genérico da cadeia).
+ */
+export async function getAlert(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  alertId: string
+): Promise<AlertResponse> {
+  return apiFetch<AlertResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/alerts/${alertId}`
+  );
+}

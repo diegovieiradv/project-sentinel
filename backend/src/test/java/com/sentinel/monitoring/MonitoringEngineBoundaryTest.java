@@ -164,11 +164,13 @@ class MonitoringEngineBoundaryTest {
     }
 
     // ------------------------------------------------------------------
-    // Prompt 12 — Alert Rules: a CONFIGURAÇÃO persiste; o ENGINE não.
+    // Prompt 12/13 — Alert Rules (config, V9) e Alert Engine (resultado, V10).
     //
-    // A fronteira ganhou UMA entidade nova (AlertRule, V9) e mantém o
-    // bloqueio do que é do Prompt 13: Alert (resultado avaliado),
-    // Engine/Evaluator/Scheduler/Firing, notificações e incidentes.
+    // O Prompt 13 ENTREGOU a avaliação: a fronteira agora tem DUAS entidades
+    // (AlertRule config + Alert resultado) e o engine vive FORA do domínio,
+    // em com.sentinel.alerting. O que continua proibido aqui é o que é do
+    // Prompt 14: Incident/IncidentEvent, notificações e qualquer Scheduler
+    // de avaliação — o tick continua sendo o do MonitoringScheduler.
     // ------------------------------------------------------------------
 
     /** Migration aditiva do Prompt 12 (a única fora de V1..V8). */
@@ -219,27 +221,63 @@ class MonitoringEngineBoundaryTest {
                 .doesNotContain("notified_at");
     }
 
+    /** Migration aditiva do Prompt 13 (o resultado avaliado). */
+    private static final String ALERTS_MIGRATION = "V10__create_alerts_table.sql";
+
     @Test
-    void noAlertEntityExists() {
+    void alertEntityIsMappedToAlertsTable() throws IOException {
         assertThat(scanEntities(name -> name.endsWith(".Alert")))
-                .as("resultado avaliado (Prompt 13) não existe: nenhuma entidade Alert")
-                .isEmpty();
+                .as("existe UMA entidade Alert, no pacote alert.model")
+                .containsExactly("com.sentinel.project.alert.model.Alert");
+
+        String source = Files.readString(
+                Path.of("src/main/java/com/sentinel/project/alert/model/Alert.java"));
+        assertThat(source)
+                .as("a entidade é mapeada na tabela alerts")
+                .contains("@Table(name = \"alerts\")");
+
+        // a tabela nasce na migration aditiva (V1..V9 intactos)
+        Path migrationDir = Path.of("src/main/resources/db/migration");
+        assertThat(Files.exists(migrationDir.resolve(ALERTS_MIGRATION)))
+                .as("o resultado avaliado nasce em %s", ALERTS_MIGRATION)
+                .isTrue();
     }
 
     @Test
-    void noAlertEngineOrEvaluatorExists() throws IOException {
+    void alertEngineLivesInTheAlertingPackage() {
         List<String> engineClasses = scanClassNames(name -> {
             String simple = name.substring(name.lastIndexOf('.') + 1);
-            return name.startsWith("com.sentinel.")
-                    && (simple.contains("AlertEngine")
-                            || (name.contains(".alert.") && simple.contains("Engine"))
-                            || simple.contains("RuleEvaluator")
-                            || simple.contains("AlertScheduler")
-                            || simple.contains("Firing"));
+            return name.startsWith("com.sentinel.alerting.")
+                    && (simple.equals("AlertEngine")
+                            || simple.equals("RuleEvaluator")
+                            || simple.equals("AlertLifecycleService"));
         });
 
         assertThat(engineClasses)
-                .as("avaliação/scheduler/firing ficam no Prompt 13 — nenhum classe aqui")
+                .as("o engine de avaliação é único e vive em com.sentinel.alerting "
+                        + "— fora do pacote de domínio")
+                .containsExactlyInAnyOrder(
+                        "com.sentinel.alerting.AlertEngine",
+                        "com.sentinel.alerting.RuleEvaluator",
+                        "com.sentinel.alerting.AlertLifecycleService");
+    }
+
+    @Test
+    void configPackageStaysConfigurationOnly() throws IOException {
+        // NENHUMA classe de engine no pacote de configuração do domínio:
+        // quem avalia/dispara é com.sentinel.alerting, quem modela é
+        // com.sentinel.project.alert.
+        List<String> engineLike = scanClassNames(name -> {
+            if (!name.startsWith("com.sentinel.project.alert.")) {
+                return false;
+            }
+            String simple = name.substring(name.lastIndexOf('.') + 1);
+            return simple.contains("Engine")
+                    || simple.contains("Scheduler")
+                    || simple.contains("Firing");
+        });
+        assertThat(engineLike)
+                .as("o pacote alert não tem Engine/Scheduler/Firing — só modelo e DTOs")
                 .isEmpty();
 
         // Fortalecimento (Reviewer): tokens proibidos em QUALQUER classe do

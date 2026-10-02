@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.sentinel.alerting.AlertTrigger;
 import com.sentinel.project.monitor.model.Monitor;
 
 import jakarta.annotation.PreDestroy;
@@ -47,10 +48,11 @@ import org.springframework.stereotype.Component;
  * avaliação de estado do Prompt 10 — tudo do NOSSO lado). Falhas de alvo não
  * entram aqui.</p>
  *
- * <p><b>Dependências do pipeline (Prompt 10):</b> este bean injeta
- * {@link MonitorCheckRecorder} e {@link OperationalStateEvaluator} apenas
- * para repassá-los à {@link MonitorExecutionTask} — quem executa o trabalho
- * é a task, na própria thread do pool, com fronteira de exceção por etapa.</p>
+ * <p><b>Dependências do pipeline (Prompt 10, estendido no 13):</b> este bean
+ * injeta {@link MonitorCheckRecorder}, {@link OperationalStateEvaluator} e
+ * {@link com.sentinel.alerting.AlertTrigger} apenas para repassá-los à
+ * {@link MonitorExecutionTask} — quem executa o trabalho é a task, na própria
+ * thread do pool, com fronteira de exceção por etapa.</p>
  */
 @Component
 public class MonitoringDispatcher {
@@ -77,6 +79,7 @@ public class MonitoringDispatcher {
     private final HttpMonitorExecutor monitorExecutor;
     private final MonitorCheckRecorder recorder;
     private final OperationalStateEvaluator evaluator;
+    private final AlertTrigger alertTrigger;
     private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
 
     private final AtomicLong dispatchedCount = new AtomicLong();
@@ -87,10 +90,12 @@ public class MonitoringDispatcher {
             MonitoringProperties properties,
             HttpMonitorExecutor monitorExecutor,
             MonitorCheckRecorder recorder,
-            OperationalStateEvaluator evaluator) {
+            OperationalStateEvaluator evaluator,
+            AlertTrigger alertTrigger) {
         this.monitorExecutor = monitorExecutor;
         this.recorder = recorder;
         this.evaluator = evaluator;
+        this.alertTrigger = alertTrigger;
         this.taskExecutor = createTaskExecutor(properties);
     }
 
@@ -126,8 +131,8 @@ public class MonitoringDispatcher {
             return DispatchOutcome.IN_FLIGHT;
         }
         try {
-            taskExecutor.execute(
-                    new MonitorExecutionTask(monitor, monitorExecutor, this, recorder, evaluator));
+            taskExecutor.execute(new MonitorExecutionTask(
+                    monitor, monitorExecutor, this, recorder, evaluator, alertTrigger));
             dispatchedCount.incrementAndGet();
             return DispatchOutcome.ACCEPTED;
         }

@@ -94,6 +94,20 @@ public class Service {
     @Column(name = "status", nullable = false, length = 20)
     private ServiceStatus status;
 
+    /**
+     * QUANDO o {@link #status} atual começou a valer (Prompt 13, migration
+     * V10). Sem isto a regra {@code SERVICE_STATUS} só saberia <em>que</em>
+     * estado o serviço está, nunca <em>há quanto tempo</em> — e o falso
+     * "UNAVAILABLE há 5 minutos" é justamente o que o Alert Engine elimina.
+     *
+     * <p>Anulável de propósito: {@code null} = "nenhuma transição registrada"
+     * (serviço recém-criado ainda {@code UNKNOWN}), diferente de "mudou
+     * agora". Escrito pelo MESMO {@link #setStatusInternal}, portanto escritor
+     * único = {@code OperationalStateEvaluator} (contrato preservado).</p>
+     */
+    @Column(name = "status_changed_at")
+    private Instant statusChangedAt;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -178,9 +192,13 @@ public class Service {
      * a ativação/desativação do serviço não mexe aqui.</p>
      *
      * @param status novo estado (nunca {@code null})
+     * @param when   instante da transição — vira {@code statusChangedAt},
+     *               o eixo temporal que a regra {@code SERVICE_STATUS}
+     *               compara com a janela (Prompt 13)
      */
-    public void setStatusInternal(ServiceStatus status) {
+    public void setStatusInternal(ServiceStatus status, Instant when) {
         this.status = Objects.requireNonNull(status, "status");
+        this.statusChangedAt = Objects.requireNonNull(when, "when");
     }
 
     // --- leitura ------------------------------------------------------------
@@ -211,6 +229,10 @@ public class Service {
 
     public ServiceStatus getStatus() {
         return status;
+    }
+
+    public Instant getStatusChangedAt() {
+        return statusChangedAt;
     }
 
     public Instant getCreatedAt() {

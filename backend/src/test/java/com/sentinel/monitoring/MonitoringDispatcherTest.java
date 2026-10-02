@@ -16,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
+import com.sentinel.alerting.AlertTrigger;
 import com.sentinel.project.model.ServiceStatus;
 import com.sentinel.project.monitor.model.Monitor;
 import com.sentinel.project.monitor.model.MonitorCheck;
@@ -153,7 +154,8 @@ class MonitoringDispatcherTest {
             }
         };
         MonitoringProperties properties = properties(4, 8);
-        dispatcher = new MonitoringDispatcher(properties, exploding, recorder(), evaluator());
+        dispatcher = new MonitoringDispatcher(
+                properties, exploding, recorder(), evaluator(), AlertTrigger.noop());
         Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
 
         assertThat(dispatcher.tryDispatch(monitor))
@@ -190,7 +192,8 @@ class MonitoringDispatcherTest {
                 new HttpMonitorExecutor(
                         url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z")),
                 recorder,
-                evaluator);
+                evaluator,
+                AlertTrigger.noop());
         Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
 
         assertThat(dispatcher.tryDispatch(monitor))
@@ -226,7 +229,8 @@ class MonitoringDispatcherTest {
                 new HttpMonitorExecutor(
                         url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z")),
                 recorder,
-                evaluator);
+                evaluator,
+                AlertTrigger.noop());
         Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
 
         assertThat(dispatcher.tryDispatch(monitor))
@@ -283,7 +287,8 @@ class MonitoringDispatcherTest {
                 return result;
             }
         };
-        dispatcher = new MonitoringDispatcher(properties(4, 8), recording, recorder(), evaluator());
+        dispatcher = new MonitoringDispatcher(
+                properties(4, 8), recording, recorder(), evaluator(), AlertTrigger.noop());
 
         Monitor slow = MonitorFixtures.monitor(SLOW_URL);
         Monitor fast = MonitorFixtures.monitor(FAST_URL);
@@ -352,7 +357,7 @@ class MonitoringDispatcherTest {
         MonitoringProperties properties = properties(workerCount, queueCapacity);
         HttpMonitorExecutor executor = new HttpMonitorExecutor(
                 url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z"));
-        return new MonitoringDispatcher(properties, executor, recorder(), evaluator());
+        return new MonitoringDispatcher(properties, executor, recorder(), evaluator(), AlertTrigger.noop());
     }
 
     private static MonitoringProperties properties(int workerCount, int queueCapacity) {
@@ -402,7 +407,7 @@ class MonitoringDispatcherTest {
         volatile boolean failing;
 
         RecordingEvaluator() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         @Override

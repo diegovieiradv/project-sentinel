@@ -4,10 +4,12 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+import com.sentinel.alerting.AlertLifecycleService;
 import com.sentinel.error.ApiException;
 import com.sentinel.organization.context.TenantContext;
 import com.sentinel.organization.model.Role;
 import com.sentinel.project.alert.model.AlertOperator;
+import com.sentinel.project.alert.model.AlertResolutionReason;
 import com.sentinel.project.alert.model.AlertRule;
 import com.sentinel.project.alert.model.AlertRuleType;
 import com.sentinel.project.alert.model.AlertSeverity;
@@ -111,16 +113,19 @@ public class AlertRuleService {
     private final MonitorRepository monitorRepository;
     private final ServiceRepository serviceRepository;
     private final ProjectRepository projectRepository;
+    private final AlertLifecycleService alertLifecycleService;
 
     public AlertRuleService(
             AlertRuleRepository alertRuleRepository,
             MonitorRepository monitorRepository,
             ServiceRepository serviceRepository,
-            ProjectRepository projectRepository) {
+            ProjectRepository projectRepository,
+            AlertLifecycleService alertLifecycleService) {
         this.alertRuleRepository = alertRuleRepository;
         this.monitorRepository = monitorRepository;
         this.serviceRepository = serviceRepository;
         this.projectRepository = projectRepository;
+        this.alertLifecycleService = alertLifecycleService;
     }
 
     // --- POST .../alert-rules ------------------------------------------------
@@ -324,8 +329,14 @@ public class AlertRuleService {
             return AlertRuleResponse.from(rule, TenantContext.role()); // no-op, sem escrita
         }
         rule.setActive(target);
-        return AlertRuleResponse.from(
-                alertRuleRepository.saveAndFlush(rule), TenantContext.role());
+        AlertRule saved = alertRuleRepository.saveAndFlush(rule);
+        if (!target) {
+            // Regra desligada com alerta ainda aberto: fecha com o motivo
+            // dedicado — a mensagem do FIRING fica intacta (Prompt 13).
+            alertLifecycleService.resolveOpenForRule(
+                    ruleId, AlertResolutionReason.RULE_DEACTIVATED);
+        }
+        return AlertRuleResponse.from(saved, TenantContext.role());
     }
 
     // --- autorização --------------------------------------------------------

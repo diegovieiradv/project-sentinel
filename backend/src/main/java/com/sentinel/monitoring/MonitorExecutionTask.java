@@ -2,6 +2,7 @@ package com.sentinel.monitoring;
 
 import java.util.UUID;
 
+import com.sentinel.alerting.AlertTrigger;
 import com.sentinel.project.monitor.model.Monitor;
 
 import org.slf4j.Logger;
@@ -48,18 +49,21 @@ final class MonitorExecutionTask implements Runnable {
     private final MonitoringDispatcher dispatcher;
     private final MonitorCheckRecorder recorder;
     private final OperationalStateEvaluator evaluator;
+    private final AlertTrigger alertTrigger;
 
     MonitorExecutionTask(
             Monitor monitor,
             HttpMonitorExecutor executor,
             MonitoringDispatcher dispatcher,
             MonitorCheckRecorder recorder,
-            OperationalStateEvaluator evaluator) {
+            OperationalStateEvaluator evaluator,
+            AlertTrigger alertTrigger) {
         this.monitor = monitor;
         this.executor = executor;
         this.dispatcher = dispatcher;
         this.recorder = recorder;
         this.evaluator = evaluator;
+        this.alertTrigger = alertTrigger;
     }
 
     @Override
@@ -97,6 +101,14 @@ final class MonitorExecutionTask implements Runnable {
         }
         catch (RuntimeException ex) {
             // histórico durável: o estado fica velho até o próximo check
+            dispatcher.recordInternalError(monitor.getId(), ex);
+        }
+        try {
+            // etapa (3): avaliação das regras de alerta do serviço — o próprio
+            // gatilho nunca lança; este catch é a barreira da fronteira.
+            alertTrigger.trigger(monitor);
+        }
+        catch (RuntimeException ex) {
             dispatcher.recordInternalError(monitor.getId(), ex);
         }
     }

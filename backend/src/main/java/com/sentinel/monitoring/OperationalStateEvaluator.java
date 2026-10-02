@@ -137,14 +137,17 @@ public class OperationalStateEvaluator {
     private final MonitorCheckRepository monitorCheckRepository;
     private final MonitorRepository monitorRepository;
     private final ServiceRepository serviceRepository;
+    private final Clock clock;
 
     public OperationalStateEvaluator(
             MonitorCheckRepository monitorCheckRepository,
             MonitorRepository monitorRepository,
-            ServiceRepository serviceRepository) {
+            ServiceRepository serviceRepository,
+            Clock clock) {
         this.monitorCheckRepository = monitorCheckRepository;
         this.monitorRepository = monitorRepository;
         this.serviceRepository = serviceRepository;
+        this.clock = clock;
     }
 
     /**
@@ -177,7 +180,9 @@ public class OperationalStateEvaluator {
         // (4) escrita só se mudou.
         if (service.getStatus() != computed) {
             ServiceStatus previous = service.getStatus();
-            service.setStatusInternal(computed);
+            // transição + eixo temporal (status_changed_at, V10): a regra
+            // SERVICE_STATUS do Alert Engine compara este instante com a janela
+            service.setStatusInternal(computed, clock.instant());
             serviceRepository.saveAndFlush(service);
             log.info(
                     "service status updated serviceId={} from={} to={} evidenceChecks={}",

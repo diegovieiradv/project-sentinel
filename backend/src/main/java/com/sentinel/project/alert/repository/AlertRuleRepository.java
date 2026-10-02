@@ -1,5 +1,6 @@
 package com.sentinel.project.alert.repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -53,6 +54,14 @@ public interface AlertRuleRepository extends JpaRepository<AlertRule, UUID> {
 
     /** Lookup do detalhe: prova Service → AlertRule. Nunca findById avulso. */
     Optional<AlertRule> findByServiceIdAndId(UUID serviceId, UUID ruleId);
+
+    /**
+     * Regras ATIVAS de um serviço — entrada do ciclo do Alert Engine
+     * (Prompt 13): só elas são avaliadas, e as regras de fora do conjunto
+     * que ainda têm alerta aberto são justamente as desativadas a resolver
+     * com {@code RULE_DEACTIVATED}.
+     */
+    List<AlertRule> findByServiceIdAndActiveTrue(UUID serviceId);
 
     /** Pré-check de unicidade (create) — 409 imediato, antes do banco. */
     boolean existsByServiceIdAndNameNormalized(UUID serviceId, String nameNormalized);

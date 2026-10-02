@@ -3,9 +3,11 @@ package com.sentinel.project.service;
 import java.util.List;
 import java.util.UUID;
 
+import com.sentinel.alerting.AlertLifecycleService;
 import com.sentinel.error.ApiException;
 import com.sentinel.organization.context.TenantContext;
 import com.sentinel.organization.model.Role;
+import com.sentinel.project.alert.model.AlertResolutionReason;
 import com.sentinel.project.dto.ServiceActivationRequest;
 import com.sentinel.project.dto.ServiceCreateRequest;
 import com.sentinel.project.dto.ServiceResponse;
@@ -82,10 +84,15 @@ public class ServiceService {
 
     private final ServiceRepository serviceRepository;
     private final ProjectRepository projectRepository;
+    private final AlertLifecycleService alertLifecycleService;
 
-    public ServiceService(ServiceRepository serviceRepository, ProjectRepository projectRepository) {
+    public ServiceService(
+            ServiceRepository serviceRepository,
+            ProjectRepository projectRepository,
+            AlertLifecycleService alertLifecycleService) {
         this.serviceRepository = serviceRepository;
         this.projectRepository = projectRepository;
+        this.alertLifecycleService = alertLifecycleService;
     }
 
     // --- POST .../services --------------------------------------------------
@@ -213,7 +220,14 @@ public class ServiceService {
         }
 
         service.setActive(target);
-        return ServiceResponse.from(serviceRepository.saveAndFlush(service), role);
+        Service saved = serviceRepository.saveAndFlush(service);
+        if (!target) {
+            // Desativação congela o estado: os alertas ainda abertos do
+            // serviço são fechados SEM afirmação sobre a saúde (Prompt 13).
+            alertLifecycleService.resolveOpenForService(
+                    serviceId, AlertResolutionReason.PARENT_INACTIVE);
+        }
+        return ServiceResponse.from(saved, role);
     }
 
     // --- autorização --------------------------------------------------------
