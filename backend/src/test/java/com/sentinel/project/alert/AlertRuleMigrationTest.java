@@ -90,14 +90,16 @@ class AlertRuleMigrationTest {
                 .as("nomes no padrão Flyway V<n>__*.sql")
                 .allMatch(name -> name.matches("V\\d+__[a-z0-9_]+\\.sql"));
 
-        // catálogo EXATO: V1..V9 (baseline) + V10 (Alert Engine, P13), nada além
+        // catálogo EXATO: V1..V9 (baseline) + V10 (Alert Engine, P13) +
+        // V11 (Incidents, P14), nada além
         List<Integer> versions = migrations.stream()
                 .map(name -> Integer.parseInt(name.substring(1, name.indexOf("__"))))
                 .sorted()
                 .toList();
         assertThat(versions)
-                .as("catálogo termina na V10 (V1..V9 preservadas + V10 do Prompt 13)")
-                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+                .as("catálogo termina na V11 (V1..V9 preservadas + V10 do Prompt 13"
+                        + " + V11 do Prompt 14)")
+                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
     }
 
     // --- 92: V1..V8 byte-idênticas ------------------------------------------
@@ -208,10 +210,10 @@ class AlertRuleMigrationTest {
         List<Map<String, Object>> rows = new JdbcTemplate(dataSource).queryForList(
                 "SELECT version, success FROM flyway_schema_history ORDER BY installed_rank");
 
-        assertThat(rows).hasSize(10);
+        assertThat(rows).hasSize(11);
         assertThat(rows)
                 .extracting(row -> String.valueOf(row.get("version")))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
         assertThat(rows)
                 .as("nenhuma migration falhou (o Hibernate ddl-auto=validate subiu no mesmo boot)")
                 .extracting(row -> row.get("success"))

@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.sentinel.project.incident.model.Incident;
 import com.sentinel.project.model.Service;
 
 import jakarta.persistence.Column;
@@ -89,6 +90,23 @@ public class Alert {
      */
     @Column(name = "monitor_id")
     private UUID monitorId;
+
+    /**
+     * Incidente a que este alerta está associado (Prompt 14) — coluna
+     * {@code incident_id} da V11, {@code null} na grande maioria.
+     *
+     * <p><b>Associação manual, nunca automática:</b> só o IncidentService
+     * escreve este vínculo (UPDATE condicional na própria regra, sem passar
+     * por aqui) — o Alert Engine não conhece a coluna e nenhum alerta nasce
+     * vinculado. LAZY de propósito: a listagem de alertas (AlertResponse) não
+     * toca no incidente, então não há select extra por linha.</p>
+     *
+     * <p>{@code ON DELETE SET NULL} na migration: apagar um incidente (só
+     * possível por SQL direto, a API não tem DELETE) preserva o alerta.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "incident_id")
+    private Incident incident;
 
     /** {@code VARCHAR(10)} + CHECK {@code alerts_status_check}. */
     @Enumerated(EnumType.STRING)
@@ -300,6 +318,15 @@ public class Alert {
 
     public UUID getMonitorId() {
         return monitorId;
+    }
+
+    /**
+     * Incidente associado ou {@code null} — leitura pelo IncidentService (a
+     * escrita do vínculo é o UPDATE condicional do
+     * {@code AlertRepository#linkIncident}, nunca um setter).
+     */
+    public Incident getIncident() {
+        return incident;
     }
 
     public AlertStatus getStatus() {

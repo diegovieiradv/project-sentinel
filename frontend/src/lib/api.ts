@@ -1942,3 +1942,297 @@ export async function getAlert(
     `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/alerts/${alertId}`
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Incidentes (Prompt 14)                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Estado do ciclo de vida manual do incidente (máquina de estados do server). */
+export type IncidentStatus =
+  | "OPEN"
+  | "INVESTIGATING"
+  | "IDENTIFIED"
+  | "RESOLVED";
+
+/** Vocabulário fechado da timeline append-only (`IncidentEventType`). */
+export type IncidentEventType =
+  | "CREATED"
+  | "STATUS_CHANGED"
+  | "SEVERITY_CHANGED"
+  | "TITLE_CHANGED"
+  | "DESCRIPTION_CHANGED"
+  | "ALERT_LINKED"
+  | "ALERT_UNLINKED";
+
+/**
+ * Resposta de UM incidente (`IncidentResponse`) — cadeia inteira no mesmo
+ * arranjo do `AlertResponse`, conteúdo editável, estado do ciclo de vida,
+ * audit de primeira linha e `version` (escudo de concorrência do `@Version`:
+ * um `409` de PATCH é "atualizado por outra pessoa").
+ */
+export interface IncidentResponse {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  serviceId: string;
+  title: string;
+  description: string | null;
+  severity: AlertSeverity;
+  status: IncidentStatus;
+  startedAt: string;
+  resolvedAt: string | null;
+  /** Só o UUID — nenhuma resposta deste recurso carrega e-mail. */
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+  /** Papel do usuário autenticado NA organização dona do serviço. */
+  role: OrganizationRole;
+}
+
+/**
+ * UMA linha da timeline (`IncidentEventResponse`) — log append-only, sem
+ * `updatedAt` (fato histórico não é editável) e com `actorUserId` nulo quando
+ * o autor não está mais no contexto.
+ */
+export interface IncidentEventResponse {
+  id: string;
+  incidentId: string;
+  type: IncidentEventType;
+  message: string;
+  actorUserId: string | null;
+  createdAt: string;
+}
+
+/**
+ * Payload de POST `.../incidents` — os campos do contrato. Os escopos
+ * (`organizationId`/`projectId`/`serviceId`) vêm do path e os atributos de
+ * servidor (`status`, `resolvedAt`, `createdByUserId`, `startedAt` implícito)
+ * não existem aqui de propósito.
+ */
+export interface IncidentCreateRequest {
+  title: string;
+  description?: string | null;
+  severity: AlertSeverity;
+  /** Opcional: ausente o server usa o relógio do domínio ("agora"). */
+  startedAt?: string;
+}
+
+/**
+ * Payload de PATCH `.../incidents/{incidentId}` — atualização PARCIAL.
+ * Campo omitido = não altera; `description: ""` limpa (vira `null`).
+ * Server-owned (`status`, `startedAt`, `resolvedAt`, `version`) não existe
+ * aqui: o estado só muda pela rota `/status`.
+ */
+export interface IncidentUpdateRequest {
+  title?: string;
+  description?: string;
+  severity?: AlertSeverity;
+}
+
+/** Payload de PATCH `.../incidents/{incidentId}/status` — destino obrigatório. */
+export interface IncidentStatusRequest {
+  status: IncidentStatus;
+}
+
+/** Filtros da listagem de incidentes (`page`/`size` + os dois enums do server). */
+export interface IncidentListParams {
+  page?: number;
+  size?: number;
+  status?: IncidentStatus;
+  severity?: AlertSeverity;
+}
+
+/** Página Spring (`Page<IncidentResponse>`): fatia atual + totais. */
+export interface IncidentPage {
+  content: IncidentResponse[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
+/**
+ * Monta a query string da listagem de incidentes (helper puro — testável sem
+ * rede). Mesmas regras das demais listagens: `undefined` omitido, ordem fixa
+ * page, size, status, severity; `""` sem params.
+ */
+export function buildIncidentListParams(params?: IncidentListParams): string {
+  if (!params) return "";
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.size !== undefined) query.set("size", String(params.size));
+  if (params.status) query.set("status", params.status);
+  if (params.severity) query.set("severity", params.severity);
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/** Base do sub-recurso — os três níveis já vêm do path. */
+function incidentsPath(
+  organizationId: string,
+  projectId: string,
+  serviceId: string
+): string {
+  return `/api/v1/organizations/${organizationId}/projects/${projectId}/services/${serviceId}/incidents`;
+}
+
+/**
+ * POST `.../incidents` → **201** incidente nascedo `OPEN`. Campos ausentes
+ * caem nas regras do server: `title: must not be blank`, `severity: must not
+ * be null`, `startedAt` fora da janela (−30 dias … +5 min) → **400**.
+ */
+export async function createIncident(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  request: IncidentCreateRequest
+): Promise<IncidentResponse> {
+  return apiFetch<IncidentResponse>(
+    incidentsPath(organizationId, projectId, serviceId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }
+  );
+}
+
+/**
+ * GET `.../incidents` → **200** página Spring, ordem fixa
+ * `startedAt desc, id desc`. Leitura funciona com projeto/serviço pai
+ * inativo (a história é consultável depois do congelamento).
+ */
+export async function listIncidents(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  params?: IncidentListParams
+): Promise<IncidentPage> {
+  return apiFetch<IncidentPage>(
+    `${incidentsPath(organizationId, projectId, serviceId)}${buildIncidentListParams(params)}`
+  );
+}
+
+/** GET `.../incidents/{incidentId}` → **200** | **404** genérico de tenant. */
+export async function getIncident(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  incidentId: string
+): Promise<IncidentResponse> {
+  return apiFetch<IncidentResponse>(
+    `${incidentsPath(organizationId, projectId, serviceId)}/${incidentId}`
+  );
+}
+
+/**
+ * PATCH `.../incidents/{incidentId}` → **200** conteúdo parcial. Chaves
+ * server-owned são ignoradas pelo DTO; no-op não gera evento nem avança
+ * `updatedAt`. **409 INCIDENT_RESOLVED** depois de resolvido.
+ */
+export async function updateIncident(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  incidentId: string,
+  request: IncidentUpdateRequest
+): Promise<IncidentResponse> {
+  return apiFetch<IncidentResponse>(
+    `${incidentsPath(organizationId, projectId, serviceId)}/${incidentId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }
+  );
+}
+
+/**
+ * PATCH `.../incidents/{incidentId}/status` → **200**. NÃO idempotente:
+ * pedir o status vigente responde **409 INCIDENT_STATUS_TRANSITION**
+ * (`Cannot transition from X to Y`), como toda transição inválida.
+ */
+export async function changeIncidentStatus(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  incidentId: string,
+  status: IncidentStatus
+): Promise<IncidentResponse> {
+  return apiFetch<IncidentResponse>(
+    `${incidentsPath(organizationId, projectId, serviceId)}/${incidentId}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }
+  );
+}
+
+/**
+ * GET `.../incidents/{incidentId}/events` → **200** timeline append-only na
+ * ordem `createdAt asc, id asc`. Não existe escrita de evento nesta API.
+ */
+export async function listIncidentEvents(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  incidentId: string
+): Promise<IncidentEventResponse[]> {
+  return apiFetch<IncidentEventResponse[]>(
+    `${incidentsPath(organizationId, projectId, serviceId)}/${incidentId}/events`
+  );
+}
+
+/**
+ * GET `.../incidents/{incidentId}/alerts` → **200** página de alertas
+ * vinculados (mesmo `page`/`size` do resto da API).
+ */
+export async function listIncidentAlerts(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  incidentId: string,
+  params?: Pick<IncidentListParams, "page" | "size">
+): Promise<AlertPage> {
+  return apiFetch<AlertPage>(
+    `${incidentsPath(organizationId, projectId, serviceId)}/${incidentId}/alerts${buildIncidentListParams(params)}`
+  );
+}
+
+/**
+ * PUT `.../incidents/{incidentId}/alerts/{alertId}` → **200** incidente.
+ * Idempotente (já nosso → 200 sem evento novo); alerta de OUTRO incidente →
+ * **409 ALERT_ALREADY_LINKED**; alerta de outro serviço → **404**.
+ */
+export async function linkIncidentAlert(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  incidentId: string,
+  alertId: string
+): Promise<IncidentResponse> {
+  return apiFetch<IncidentResponse>(
+    `${incidentsPath(organizationId, projectId, serviceId)}/${incidentId}/alerts/${alertId}`,
+    { method: "PUT" }
+  );
+}
+
+/**
+ * DELETE `.../incidents/{incidentId}/alerts/{alertId}` → **204** sem corpo.
+ * Idempotente: soltar o que já está solto também é 204 e não gera evento.
+ * Nunca apaga o alerta — só o vínculo.
+ */
+export async function unlinkIncidentAlert(
+  organizationId: string,
+  projectId: string,
+  serviceId: string,
+  incidentId: string,
+  alertId: string
+): Promise<void> {
+  await apiFetch<void>(
+    `${incidentsPath(organizationId, projectId, serviceId)}/${incidentId}/alerts/${alertId}`,
+    { method: "DELETE" }
+  );
+}

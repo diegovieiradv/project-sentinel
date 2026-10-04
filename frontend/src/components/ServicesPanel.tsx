@@ -16,6 +16,7 @@ import {
 import { handleUnauthorized, isUnauthorized, messageOf } from "@/lib/errors";
 import AlertsPanel from "@/components/AlertsPanel";
 import AlertRulesPanel from "@/components/AlertRulesPanel";
+import IncidentsPanel from "@/components/IncidentsPanel";
 import MetricsSection from "@/components/MetricsSection";
 import MonitorsPanel from "@/components/MonitorsPanel";
 
@@ -623,6 +624,15 @@ export default function ServicesPanel({
                                 estado nasce limpo por serviço. Somente leitura. */}
                             <AlertsPanel
                               key={`alerts-${service.id}`}
+                              service={service}
+                            />
+
+                            {/* Incidentes do serviço (Prompt 14) — monta/
+                                desmonta com o serviço (`key={service.id}`),
+                                estado nasce limpo por serviço. Ciclo de vida
+                                manual + timeline append-only. */}
+                            <IncidentsPanel
+                              key={`incidents-${service.id}`}
                               service={service}
                             />
 

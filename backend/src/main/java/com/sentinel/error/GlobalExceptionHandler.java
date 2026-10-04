@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -91,6 +92,30 @@ public class GlobalExceptionHandler {
                 Instant.now(),
                 request.getRequestURI());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * Duas requisições disputaram a MESMA linha com {@code @Version} (Spring
+     * Data JPA lança {@code JpaOptimisticLockingFailureException}, subclasse de
+     * {@link OptimisticLockingFailureException}): não é bug de código nem erro
+     * interno — é conflito de escrita e o contrato do projeto responde 409.
+     * Sem este handler cairia no catch-all e viraria 500 numa corrida
+     * legítima (o {@code IncidentService} depende da máquina de estados para
+     * ordenar a corrida; o exemplo é um DELETE de link perdendo para um PUT).
+     *
+     * <p>Mensagem <b>fixa</b>: a do Spring cita a classe da entidade, o
+     * proxy/identificador e o fluxo de persistência — informação interna.</p>
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(
+            OptimisticLockingFailureException ex, HttpServletRequest request) {
+        log.debug("Optimistic lock conflict on {} {}", request.getMethod(), request.getRequestURI(), ex);
+        ErrorResponse body = new ErrorResponse(
+                "CONFLICT",
+                "The resource was updated by another request",
+                Instant.now(),
+                request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     /**

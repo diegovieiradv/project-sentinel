@@ -19,7 +19,8 @@
 | RBAC: leitura para qualquer papel, mutação para `ADMIN`/`OPERATOR` | Construído |
 | Validações de entrada sem `500` (nome, descrição, paginação, `sort`, ids malformados, corpo malformado) | Construído |
 | `DELETE` da rota → `405` (remoção não existe neste prompt) | Construído |
-| Coleta de dados de saúde, regras de alerta, incidentes e dashboards | **Fora do escopo** (prompts futuros) |
+| Coleta de dados de saúde, regras de alerta e dashboards | **Fora do escopo** (prompts futuros) |
+| Ciclo de vida de incidentes do serviço | **Construído no Prompt 14** (sub-recurso `.../services/{serviceId}/incidents` — ver [incidents.md](incidents.md)) |
 
 ## 2. Modelo de dados
 
@@ -292,7 +293,7 @@ com.sentinel
 
 ## 10. Fora do escopo (prompts futuros)
 
-- Coleta de dados de saúde dos serviços, regras de alerta e ciclo de vida de incidentes — prompts futuros.
+- Coleta de dados de saúde dos serviços, regras de alerta e dashboards — prompts futuros. O **ciclo de vida de incidentes** já está construído no Prompt 14 como sub-recurso do serviço (ver [incidents.md](incidents.md)).
 - Remoção definitiva de serviço (hoje a rota `DELETE` devolve `405`; o soft-delete é o `.../activation`).
 - Alteração de `status` por endpoint (nenhum existe; a transição entrará como caminho de domínio explícito).
 - Tags/metadados livres, busca textual além da subcadeia sobre `name_normalized` (ex.: `pg_trgm`) — só se houver requisito real.

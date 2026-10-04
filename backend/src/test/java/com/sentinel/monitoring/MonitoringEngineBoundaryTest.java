@@ -224,6 +224,9 @@ class MonitoringEngineBoundaryTest {
     /** Migration aditiva do Prompt 13 (o resultado avaliado). */
     private static final String ALERTS_MIGRATION = "V10__create_alerts_table.sql";
 
+    /** Migration aditiva do Prompt 14 (incidente + timeline + vínculo). */
+    private static final String V11_INCIDENTS_MIGRATION = "V11__create_incidents_tables.sql";
+
     @Test
     void alertEntityIsMappedToAlertsTable() throws IOException {
         assertThat(scanEntities(name -> name.endsWith(".Alert")))
@@ -341,10 +344,108 @@ class MonitoringEngineBoundaryTest {
                 .isEmpty();
     }
 
+    /**
+     * Fronteira do Prompt 14: o histórico nasceu em UMA migration aditiva
+     * (V11), o ciclo de vida é MANUAL e o log é append-only. O que continua
+     * proibido aqui é o que é do Prompt 15: notificação (a coluna
+     * {@code notified_at} segue fora) e qualquer Scheduler de avaliação — o
+     * tick continua sendo o do MonitoringScheduler.
+     */
     @Test
-    void noIncidentEntitiesExist() {
+    void incidentEntitiesAreExactlyIncidentAndIncidentEvent() {
         assertThat(scanEntities(name -> name.contains("Incident")))
-                .as("Incident/IncidentEvent ficam num prompt futuro")
+                .as("só Incident e IncidentEvent — nada de Notification/IncidentTask")
+                .containsExactlyInAnyOrder(
+                        "com.sentinel.project.incident.model.Incident",
+                        "com.sentinel.project.incident.model.IncidentEvent");
+    }
+
+    @Test
+    void incidentsMigrationIsAdditiveAndManualLifecycleBounded() throws IOException {
+        Path migrationDir = Path.of("src/main/resources/db/migration");
+        Path incidentMigration = migrationDir.resolve(V11_INCIDENTS_MIGRATION);
+        assertThat(Files.exists(incidentMigration))
+                .as("o histórico nasce em %s (V1..V10 intactos)", V11_INCIDENTS_MIGRATION)
+                .isTrue();
+
+        // nenhum V12: o prompt só podia criar a V11
+        try (Stream<Path> files = Files.list(migrationDir)) {
+            assertThat(files.map(p -> p.getFileName().toString())
+                            .filter(name -> name.startsWith("V12__"))
+                            .toList())
+                    .as("Prompt 14 não cria a migration seguinte")
+                    .isEmpty();
+        }
+
+        String full = Files.readString(incidentMigration).toLowerCase(Locale.ROOT);
+        String sql = full.lines()
+                .filter(line -> !line.trim().startsWith("--"))
+                .collect(java.util.stream.Collectors.joining("\n"));
+
+        assertThat(sql.split("create table").length - 1)
+                .as("uma tabela de incidente por migration (+ a coluna do alerta)")
+                .isEqualTo(2);
+        assertThat(sql).contains("create table incidents");
+        assertThat(sql).contains("create table incident_events");
+        // service_id NOT NULL: nasce de um serviço, nunca de um alerta
+        assertThat(sql).contains("service_id uuid not null references services (id)");
+        // cardinalidade REAL: "um alerta ≤ um incidente" é inerente à coluna
+        // única por linha + ao UPDATE condicional; "N alertas por incidente"
+        // exige índice NÃO-único (um UNIQUE (incident_id) seria o inverso do
+        // contrato e quebraria o PUT legítimo do segundo alerta)
+        assertThat(sql)
+                .as("índice simples em alerts.incident_id apoia a listagem")
+                .contains("create index idx_alerts_incident on alerts (incident_id)");
+        assertThat(sql)
+                .as("NENHUM índice único: N alertas podem apontar o MESMO incidente")
+                .doesNotContain("unique index uq_alerts_incident")
+                .doesNotContain("unique index");
+
+        // log append-only: incident_events não tem coluna de atualização
+        // (incidents tem, porque o conteúdo é editável via PATCH)
+        int events = sql.indexOf("create table incident_events");
+        assertThat(events).as("tabela da timeline existe").isGreaterThanOrEqualTo(0);
+        String eventsBlock = sql.substring(events, sql.indexOf(';', events));
+        assertThat(eventsBlock)
+                .as("a timeline é fato histórico: sem updated_at")
+                .doesNotContain("updated_at");
+
+        // NADA do Prompt 15
+        assertThat(sql)
+                .as("notificação fica num prompt futuro")
+                .doesNotContain("notified_at")
+                .doesNotContain("notification");
+    }
+
+    /**
+     * O motor de avaliação NÃO conhece o domínio de incidente: nenhum arquivo
+     * sob {@code com.sentinel.alerting} referencia {@code incident} (classe,
+     * tabela, coluna ou pacote). É a trava do Prompt 14 — nascer de humano
+     * significa que a DECISÃO de virar incidente nunca sai do engine — e a
+     * do Prompt 15 (notificação) se soma aqui sem mexer nas existentes.
+     */
+    @Test
+    void alertingPackageHasNoIncidentReferences() throws IOException {
+        Path alertingDir = Path.of("src/main/java/com/sentinel/alerting");
+        assertThat(Files.isDirectory(alertingDir))
+                .as("pacote alerting existe (execução a partir da raiz do módulo)")
+                .isTrue();
+
+        List<String> offenders = new ArrayList<>();
+        try (Stream<Path> walk = Files.walk(alertingDir)) {
+            List<Path> sources = walk.filter(p -> p.toString().endsWith(".java")).toList();
+            assertThat(sources).as("fontes do pacote alerting legíveis").isNotEmpty();
+            for (Path source : sources) {
+                String content = Files.readString(source).toLowerCase(Locale.ROOT);
+                if (content.contains("incident")) {
+                    offenders.add(source.getFileName().toString());
+                }
+            }
+        }
+
+        assertThat(offenders)
+                .as("com.sentinel.alerting não referencia Incident: o alerta nunca vira "
+                        + "incidente sozinho — a associação é manual, invertida e opcional")
                 .isEmpty();
     }
 

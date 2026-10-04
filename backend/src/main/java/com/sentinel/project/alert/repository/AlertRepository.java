@@ -7,10 +7,12 @@ import java.util.UUID;
 import com.sentinel.project.alert.model.Alert;
 import com.sentinel.project.alert.model.AlertSeverity;
 import com.sentinel.project.alert.model.AlertStatus;
+import com.sentinel.project.incident.model.Incident;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -113,4 +115,90 @@ public interface AlertRepository extends JpaRepository<Alert, UUID> {
             """)
     List<UUID> findOpenRuleIds(
             @Param("serviceId") UUID serviceId, @Param("status") AlertStatus status);
+
+    // --- associação Incident ↔ Alert (Prompt 14) ----------------------------
+
+    /**
+     * Vincula o alerta a UM incidente <b>condicionalmente</b> ({@code WHERE
+     * incident IS NULL}) — o coração da cardinalidade "um alerta pertence a
+     * no máximo um incidente".
+     *
+     * <p><b>Por que UPDATE bulk em vez de setter:</b> escrever
+     * {@code alert.setIncident(...)} regravaria TODA a linha — e o
+     * {@code @PreUpdate} dispararia {@code updatedAt}, fazendo o alerta
+     * "mexer" num timestamp que só deveria mudar quando a avaliação muda.
+     * O UPDATE toca unicamente {@code incident_id}, então o alerta está
+     * <b>byte-idêntico</b> depois do link (critérios de imutabilidade do
+     * alerta), e a barreira da aplicação é o próprio
+     * {@code UPDATE ... WHERE incident IS NULL} condicional combinado com
+     * a releitura/classificação em {@code 0 linhas}: o IncidentService
+     * responde {@code 200 idempotente} (mesmo incidente) ou {@code 409
+     * ALERT_ALREADY_LINKED} (outro) — nunca dois vínculos. O índice
+     * {@code idx_alerts_incident} da V11 é <b>não-único</b> e serve só à
+     * listagem.</p>
+     *
+     * <p><b>0 linhas ≠ erro:</b> significa que outro vínculo venceu a
+     * corrida (ou a operação já era um no-op) — o IncidentService relê o
+     * alerta e responde 200 idempotente (mesmo incidente), 409
+     * {@code ALERT_ALREADY_LINKED} (outro incidente) ou retenta. NUNCA
+     * propaga SQL para o cliente.</p>
+     *
+     * <p>{@code clearAutomatically}: a entidade Alert em memória fica
+     * desatualizada depois do bulk update — limpar o contexto garante que a
+     * releitura devolva o {@code incident_id} verdadeiro.</p>
+     *
+     * @return 1 quando ESTA chamada fez o vínculo; 0 quando ele já existia
+     *         (próprio ou de outro incidente)
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            UPDATE Alert a
+            SET a.incident = :incident
+            WHERE a.id = :alertId
+              AND a.incident IS NULL
+            """)
+    int linkIncident(@Param("alertId") UUID alertId, @Param("incident") Incident incident);
+
+    /**
+     * Remove o vínculo <b>condicionalmente</b> ({@code WHERE incident =
+     * :incident}): só desassocia se o alerta ainda pertence AQUELE
+     * incidente. Mesmo racional do link — a escrita é atômica por linha,
+     * o alerta em si não é tocado em mais nada (a mensagem do FIRING, os
+     * snapshots, status e timestamps ficam intactos) e 0 linhas significa
+     * que outra remoção venceu a corrida (no-op, sem evento).
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            UPDATE Alert a
+            SET a.incident = null
+            WHERE a.id = :alertId
+              AND a.incident = :incident
+            """)
+    int unlinkIncident(@Param("alertId") UUID alertId, @Param("incident") Incident incident);
+
+    /**
+     * Alertas já associados ao incidente, mais recentes primeiro (mesma
+     * ordem da listagem de alertas do serviço, imposta pelo {@link Pageable}).
+     * {@code JOIN FETCH} na regra pelo mesmo motivo da {@link #search}: a
+     * resposta lê o nome da regra e sem o fetch seriam N selects (N+1) para
+     * poucos alertas.
+     *
+     * <p><b>Paginação no banco</b> (mesmo arranjo do {@link #search}): o GET
+     * {@code .../incidents/{id}/alerts} aceita {@code page}/{@code size} como
+     * o resto da API, e a cardinalidade "um incidente × N alertas" não tem
+     * teto garantido — buscar a lista inteira para descartar a maior parte
+     * seria uma decisão de escala tomada por engano. O derived count gerado
+     * pelo Spring Data remove o {@code join fetch} (junção 1:1, mesma
+     * contagem).</p>
+     *
+     * @param incidentId incidente dono (já provado na cadeia do tenant)
+     * @param pageable   {@code startedAt desc, id desc} (ordem da API)
+     */
+    @Query("""
+            SELECT a
+            FROM Alert a
+            JOIN FETCH a.alertRule r
+            WHERE a.incident.id = :incidentId
+            """)
+    Page<Alert> searchByIncidentId(@Param("incidentId") UUID incidentId, Pageable pageable);
 }

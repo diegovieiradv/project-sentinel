@@ -94,8 +94,9 @@ class AlertMigrationTest {
                 .sorted()
                 .toList();
         assertThat(versions)
-                .as("catálogo termina na V10 (V1..V9 originais + V10 do prompt)")
-                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+                .as("catálogo termina na V11 (V1..V9 originais + V10 do prompt"
+                        + " + V11 do Prompt 14)")
+                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
     }
 
     // --- 98: V1..V9 byte-idênticas ------------------------------------------
@@ -222,10 +223,10 @@ class AlertMigrationTest {
         List<Map<String, Object>> rows = new JdbcTemplate(dataSource).queryForList(
                 "SELECT version, success FROM flyway_schema_history ORDER BY installed_rank");
 
-        assertThat(rows).hasSize(10);
+        assertThat(rows).hasSize(11);
         assertThat(rows)
                 .extracting(row -> String.valueOf(row.get("version")))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
         assertThat(rows)
                 .as("nenhuma migration falhou (Hibernate ddl-auto=validate no mesmo boot)")
                 .extracting(row -> row.get("success"))

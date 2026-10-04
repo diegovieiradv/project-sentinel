@@ -351,7 +351,11 @@ describe("contrato somente-leitura (sem mutação de alerta)", () => {
       new URL("./api.ts", import.meta.url),
       "utf8"
     );
-    const alertsSection = source.slice(source.indexOf("Alerts (Prompt 13)"));
+    // isola a seção de alertas: o arquivo tem seções posteriores (Incidentes,
+    // Prompt 14) com os próprios verbos mutantes — o recorte evita falso positivo
+    const start = source.indexOf("Alerts (Prompt 13)");
+    const end = source.indexOf("Incidentes (Prompt 14)", start);
+    const alertsSection = source.slice(start, end === -1 ? undefined : end);
     expect(alertsSection).toContain("export async function listAlerts");
     expect(alertsSection).toContain("export async function getAlert");
     expect(alertsSection).not.toContain("export async function createAlert");
