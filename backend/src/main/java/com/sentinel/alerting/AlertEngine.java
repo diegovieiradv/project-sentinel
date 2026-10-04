@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import com.sentinel.project.alert.automation.AlertPostEvaluationHook;
 import com.sentinel.project.alert.model.Alert;
 import com.sentinel.project.alert.model.AlertResolutionReason;
 import com.sentinel.project.alert.model.AlertRule;
@@ -40,7 +41,9 @@ import org.springframework.stereotype.Component;
  *   <li>alerta aberto cuja regra saiu do catálogo → resolve com
  *       {@code RULE_DEACTIVATED};</li>
  *   <li>regra ativa: avalia → FIRING abre/toca, HEALTHY resolve
- *       {@code AUTO}, NO_DATA/ERROR não fazem nada.</li>
+ *       {@code AUTO}, NO_DATA/ERROR não fazem nada;</li>
+ *   <li>fim do caminho normal: o {@link AlertPostEvaluationHook} é notificado
+ *       (Prompt 15, try/catch — nunca derruba o ciclo).</li>
  * </ol>
  *
  * <p><b>Janela de alerta NUNCA resolve:</b> NO_DATA é "sem evidência", não
@@ -56,6 +59,14 @@ import org.springframework.stereotype.Component;
  * monitor desligado — histórico é histórico; o monitor não rodar não muda o
  * que a janela já observou (e sem checks novos a métrica converge para
  * NO_DATA sozinha).</p>
+ *
+ * <p><b>Hook de pós-avaliação (Prompt 15):</b> ao FIM do caminho normal,
+ * depois das transições do ciclo, o engine notifica um
+ * {@link AlertPostEvaluationHook} dentro de try/catch — a implementação
+ * (reconciliação de automação) mora FORA do pacote, acessa só esta
+ * interface neutra e nunca propaga exceção. Nos atalhos (serviço sumido ou
+ * inativo) não há avaliação, então não há hook. O ciclo continua íntegro
+ * mesmo se o hook falhar: isolamento POR REGRA estendido ao pós-ciclo.</p>
  */
 @Component
 public class AlertEngine {
@@ -68,6 +79,7 @@ public class AlertEngine {
     private final AlertLifecycleService lifecycle;
     private final RuleEvaluator evaluator;
     private final com.sentinel.monitoring.Clock clock;
+    private final AlertPostEvaluationHook postEvaluationHook;
 
     public AlertEngine(
             ServiceRepository serviceRepository,
@@ -75,13 +87,15 @@ public class AlertEngine {
             AlertRepository alertRepository,
             AlertLifecycleService lifecycle,
             RuleEvaluator evaluator,
-            com.sentinel.monitoring.Clock clock) {
+            com.sentinel.monitoring.Clock clock,
+            AlertPostEvaluationHook postEvaluationHook) {
         this.serviceRepository = serviceRepository;
         this.alertRuleRepository = alertRuleRepository;
         this.alertRepository = alertRepository;
         this.lifecycle = lifecycle;
         this.evaluator = evaluator;
         this.clock = clock;
+        this.postEvaluationHook = postEvaluationHook;
     }
 
     /**
@@ -126,6 +140,17 @@ public class AlertEngine {
                 serviceId, service.getStatus(), service.getStatusChangedAt(), now);
         for (AlertRule rule : activeRules) {
             apply(service, rule, ctx);
+        }
+
+        // (5) pós-avaliação (Prompt 15): notificação neutra às réplicas do
+        // ciclo — mesmo isolamento do resto: falha vira log e o ciclo
+        // seguinte decide. Só no caminho normal (houve avaliação); os
+        // atalhos de serviço sumido/inativo retornaram acima.
+        try {
+            postEvaluationHook.afterEvaluation(serviceId);
+        }
+        catch (RuntimeException ex) {
+            log.error("post evaluation hook failed serviceId={}", serviceId, ex);
         }
     }
 

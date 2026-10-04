@@ -25,13 +25,16 @@ import jakarta.persistence.Version;
  * humana em UM serviço, sub-recurso na hierarquia
  * Organization → Project → Service → Incident.
  *
- * <p><b>Nascido de um humano, nunca do engine:</b> só existe
- * {@code POST .../incidents}; nenhuma classe de {@code com.sentinel.alerting}
- * referencia este pacote (travado por
+ * <p><b>Duas origens, uma máquina de estados:</b> o incidente nasce de um
+ * humano ({@code POST .../incidents}, {@link IncidentSource#MANUAL}) ou da
+ * automação Alert → Incident (Prompt 15, {@link IncidentSource#ALERT_AUTOMATION}
+ * — flag opt-in por regra, correlação em com.sentinel.project.alert.automation).
+ * Em AMBOS os casos quem dispara o alerta nunca decide sozinho: nenhuma
+ * classe de {@code com.sentinel.alerting} referencia este pacote (travado por
  * {@code MonitoringEngineBoundaryTest.alertingPackageHasNoIncidentReferences})
- * e não há trigger/listener/scheduler que abra incidente sozinho. Alerta
- * algum vira incidente automaticamente — a associação é opcional, invertida
- * ({@code alerts.incident_id}) e feita DEPOIS, via API.</p>
+ * e a coluna de vínculo continua invertida ({@code alerts.incident_id}),
+ * escrita por UPDATE condicional — o Alert Engine não conhece a coluna nem o
+ * pacote.</p>
  *
  * <p><b>Snapshot livre, timeline obrigatória:</b> os campos do incidente
  * são editáveis por ADMIN/OPERATOR enquanto não estiver RESOLVED, mas cada
@@ -100,6 +103,17 @@ public class Incident {
     @Column(nullable = false, length = 15)
     private IncidentStatus status;
 
+    /**
+     * Quem nasceu o incidente — {@code VARCHAR(20)} + CHECK
+     * {@code incidents_source_check} da migration V12 ({@code MANUAL} |
+     * {@code ALERT_AUTOMATION}). Nasce {@code MANUAL} no construtor de
+     * domínio humano e é fixo depois: a origem é fato histórico, não estado
+     * editável.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private IncidentSource source;
+
     /** Quando o incidente COMEÇOU — imutável após o create. */
     @Column(name = "started_at", nullable = false, updatable = false)
     private Instant startedAt;
@@ -108,7 +122,15 @@ public class Incident {
     @Column(name = "resolved_at")
     private Instant resolvedAt;
 
-    @Column(name = "created_by_user_id", nullable = false, updatable = false)
+    /**
+     * Quem abriu o incidente — audit de primeira linha. A V11 nasceu
+     * {@code NOT NULL}; a V12 tornou a coluna anulável PARA a automação
+     * (Prompt 15): {@link IncidentSource#ALERT_AUTOMATION} grava {@code null}
+     * (não existe pessoa por trás de uma abertura automática). O caminho
+     * MANUAL continua exigindo ator — a exigência vive no
+     * {@code IncidentService} (service), não mais na coluna.
+     */
+    @Column(name = "created_by_user_id", updatable = false)
     private UUID createdByUserId;
 
     @Column(nullable = false, updatable = false)
@@ -126,8 +148,11 @@ public class Incident {
     }
 
     /**
-     * Incidente de domínio: nasce {@link IncidentStatus#OPEN} com
-     * {@code resolvedAt} {@code null}.
+     * Incidente de domínio <b>manual</b> (Prompt 14): nasce
+     * {@link IncidentStatus#OPEN} com {@link IncidentSource#MANUAL},
+     * {@code resolvedAt} {@code null} e EXIGE quem abriu — o audit de
+     * primeira linha não é opcional no caminho humano (o {@code null} da
+     * coluna, desde a V12, é exclusivo do caminho automatizado).
      *
      * @param service        serviço dono (cadeia já provada no tenant)
      * @param title          título já sanitizado e validado pelo service
@@ -143,12 +168,52 @@ public class Incident {
             AlertSeverity severity,
             Instant startedAt,
             UUID createdByUserId) {
+        this(
+                service,
+                title,
+                description,
+                severity,
+                startedAt,
+                IncidentSource.MANUAL,
+                Objects.requireNonNull(createdByUserId, "createdByUserId"));
+    }
+
+    /**
+     * Incidente de domínio com ORIGEM explícita (Prompt 15) — o caminho
+     * automatizado passa {@link IncidentSource#ALERT_AUTOMATION} com
+     * {@code createdByUserId} {@code null}; o manual continua obrigado a
+     * ter ator (checado aqui também, para a regra valer em qualquer
+     * construtor).
+     *
+     * @param service        serviço dono (cadeia já provada no tenant)
+     * @param title          título já sanitizado e validado pelo service
+     * @param description    descrição sanitizada ou {@code null}
+     * @param severity       severidade do alerta que originou ou escolhida
+     * @param startedAt      quando começou (o alerta diz "quando começou")
+     * @param source         origem ({@code MANUAL} | {@code ALERT_AUTOMATION})
+     * @param createdByUserId quem abriu — {@code null} SOMENTE quando a
+     *                        origem não é humana
+     */
+    public Incident(
+            Service service,
+            String title,
+            String description,
+            AlertSeverity severity,
+            Instant startedAt,
+            IncidentSource source,
+            UUID createdByUserId) {
+        // valida ANTES de mutar: entrada inválida não deixa o objeto meio-criado
+        Objects.requireNonNull(source, "source");
+        if (source == IncidentSource.MANUAL) {
+            Objects.requireNonNull(createdByUserId, "createdByUserId");
+        }
         this.service = Objects.requireNonNull(service, "service");
         this.title = Objects.requireNonNull(title, "title");
         this.description = description;
         this.severity = Objects.requireNonNull(severity, "severity");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
-        this.createdByUserId = Objects.requireNonNull(createdByUserId, "createdByUserId");
+        this.source = source;
+        this.createdByUserId = createdByUserId;
         this.status = IncidentStatus.OPEN;
         this.resolvedAt = null;
     }
@@ -270,6 +335,11 @@ public class Incident {
 
     public IncidentStatus getStatus() {
         return status;
+    }
+
+    /** Origem imutável: {@code MANUAL} ou {@code ALERT_AUTOMATION}. */
+    public IncidentSource getSource() {
+        return source;
     }
 
     public Instant getStartedAt() {

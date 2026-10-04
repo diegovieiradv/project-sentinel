@@ -1559,6 +1559,11 @@ export interface AlertRuleResponse {
   window: EvaluationWindow;
   severity: AlertSeverity;
   active: boolean;
+  /**
+   * Flag da automação (Prompt 15): quando `true`, a primeira disparada desta
+   * regra abre um incidente e vincula o alerta a ele.
+   */
+  autoCreateIncident: boolean;
   createdAt: string;
   updatedAt: string;
   /** Papel do usuário autenticado NA organização dona do serviço. */
@@ -1580,6 +1585,8 @@ export interface AlertRuleCreateRequest {
   window: EvaluationWindow;
   severity: AlertSeverity;
   monitorId?: string | null;
+  /** Ausente o server trata como `false` (automação é opt-in). */
+  autoCreateIncident?: boolean;
 }
 
 /**
@@ -1597,6 +1604,8 @@ export interface AlertRuleUpdateRequest {
   window?: EvaluationWindow;
   severity?: AlertSeverity;
   monitorId?: string | null;
+  /** Ausente (ou `null`) = não altera a flag — mesmo regime dos demais campos. */
+  autoCreateIncident?: boolean;
 }
 
 /** Corpo do PATCH `.../alert-rules/{ruleId}/activation` — idempotente. */
@@ -1674,6 +1683,9 @@ function alertRuleCreateBody(
     body.thresholdStatus = request.thresholdStatus;
   }
   if (request.monitorId !== undefined) body.monitorId = request.monitorId;
+  if (request.autoCreateIncident !== undefined) {
+    body.autoCreateIncident = request.autoCreateIncident;
+  }
   return body;
 }
 
@@ -1697,6 +1709,9 @@ function alertRuleUpdateBody(
   if (request.window !== undefined) body.window = request.window;
   if (request.severity !== undefined) body.severity = request.severity;
   if (request.monitorId !== undefined) body.monitorId = request.monitorId;
+  if (request.autoCreateIncident !== undefined) {
+    body.autoCreateIncident = request.autoCreateIncident;
+  }
   return body;
 }
 
@@ -1954,6 +1969,14 @@ export type IncidentStatus =
   | "IDENTIFIED"
   | "RESOLVED";
 
+/**
+ * Origem do incidente (`IncidentSource`, Prompt 15): `MANUAL` nasceu pela
+ * rota de criação de um humano; `ALERT_AUTOMATION` nasceu sozinho quando a
+ * regra com `autoCreateIncident` disparou — `createdByUserId` nulo acompanha
+ * a origem automática.
+ */
+export type IncidentSource = "MANUAL" | "ALERT_AUTOMATION";
+
 /** Vocabulário fechado da timeline append-only (`IncidentEventType`). */
 export type IncidentEventType =
   | "CREATED"
@@ -1979,10 +2002,15 @@ export interface IncidentResponse {
   description: string | null;
   severity: AlertSeverity;
   status: IncidentStatus;
+  /** Origem — diz "humano ou flag da regra" (Prompt 15). */
+  source: IncidentSource;
   startedAt: string;
   resolvedAt: string | null;
-  /** Só o UUID — nenhuma resposta deste recurso carrega e-mail. */
-  createdByUserId: string;
+  /**
+   * Só o UUID — nenhuma resposta deste recurso carrega e-mail. Nulo para
+   * incidente de `ALERT_AUTOMATION` (não existe humano por trás).
+   */
+  createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
   version: number;

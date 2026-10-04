@@ -291,9 +291,13 @@ class MonitoringEngineBoundaryTest {
             }
             String simple = name.substring(name.lastIndexOf('.') + 1)
                     .toLowerCase(Locale.ROOT);
-            // único nome legítimo que contém o token: enum de CONFIGURAÇÃO
-            // das janelas de avaliação (não avalia nada)
-            if (simple.equals("evaluationwindow")) {
+            // nomes legítimos que contêm o token: (a) enum de CONFIGURAÇÃO
+            // das janelas de avaliação (não avalia nada) e (b) o contrato
+            // NEUTRO do hook de pós-avaliação (Prompt 15) — interface
+            // acessada pelo engine; quem reage de fato mora em classes sem
+            // token (o reconciler), e o hook não agenda nem avalia nada.
+            if (simple.equals("evaluationwindow")
+                    || simple.equals("alertpostevaluationhook")) {
                 return false;
             }
             return simple.contains("scheduler")
@@ -350,11 +354,17 @@ class MonitoringEngineBoundaryTest {
      * proibido aqui é o que é do Prompt 15: notificação (a coluna
      * {@code notified_at} segue fora) e qualquer Scheduler de avaliação — o
      * tick continua sendo o do MonitoringScheduler.
+     *
+     * <p>Desde o Prompt 15 existe UMA migration seguinte
+     * ({@code V12} — flag de automação, origem do incidente e trava de
+     * correlação, todas ADITIVAS em tabelas da V11) e nenhuma além dela:
+     * o escopo continua amarrado por migration, nunca por "e por aí vai".</p>
      */
     @Test
     void incidentEntitiesAreExactlyIncidentAndIncidentEvent() {
         assertThat(scanEntities(name -> name.contains("Incident")))
-                .as("só Incident e IncidentEvent — nada de Notification/IncidentTask")
+                .as("só Incident e IncidentEvent — nada de Notification/IncidentTask "
+                        + "(IncidentSource é enum, não entidade)")
                 .containsExactlyInAnyOrder(
                         "com.sentinel.project.incident.model.Incident",
                         "com.sentinel.project.incident.model.IncidentEvent");
@@ -368,13 +378,16 @@ class MonitoringEngineBoundaryTest {
                 .as("o histórico nasce em %s (V1..V10 intactos)", V11_INCIDENTS_MIGRATION)
                 .isTrue();
 
-        // nenhum V12: o prompt só podia criar a V11
+        // UMA migration do Prompt 15 (a V12 aditiva de automação) e nenhuma
+        // depois dela: o escopo é amarrado por migration, nunca por "aí vai"
         try (Stream<Path> files = Files.list(migrationDir)) {
-            assertThat(files.map(p -> p.getFileName().toString())
-                            .filter(name -> name.startsWith("V12__"))
-                            .toList())
-                    .as("Prompt 14 não cria a migration seguinte")
+            List<String> names = files.map(p -> p.getFileName().toString()).toList();
+            assertThat(names.stream().filter(name -> name.startsWith("V13__")).toList())
+                    .as("nenhuma V13 — o Prompt 15 cria só a V12")
                     .isEmpty();
+            assertThat(names.stream().filter(name -> name.startsWith("V12__")).toList())
+                    .as("o Prompt 15 cria exatamente a V12 (alert_incident_automation)")
+                    .hasSize(1);
         }
 
         String full = Files.readString(incidentMigration).toLowerCase(Locale.ROOT);
@@ -418,11 +431,15 @@ class MonitoringEngineBoundaryTest {
     }
 
     /**
-     * O motor de avaliação NÃO conhece o domínio de incidente: nenhum arquivo
+     * O motor de avaliação NÃO conhece o domínio de destino: nenhum arquivo
      * sob {@code com.sentinel.alerting} referencia {@code incident} (classe,
      * tabela, coluna ou pacote). É a trava do Prompt 14 — nascer de humano
-     * significa que a DECISÃO de virar incidente nunca sai do engine — e a
-     * do Prompt 15 (notificação) se soma aqui sem mexer nas existentes.
+     * significa que a DECISÃO de virar destino nunca sai do engine — e o
+     * Prompt 15 a CONFIRMA sem afrouxar: a automação mora em
+     * {@code com.sentinel.project.alert.automation} e o engine só publica um
+     * evento neutro de nascimento + recebe um hook de pós-avaliação com
+     * nomes neutros. Notificação continua fora (a do Prompt 15 se soma aqui
+     * sem mexer nas travas existentes).
      */
     @Test
     void alertingPackageHasNoIncidentReferences() throws IOException {
@@ -444,8 +461,9 @@ class MonitoringEngineBoundaryTest {
         }
 
         assertThat(offenders)
-                .as("com.sentinel.alerting não referencia Incident: o alerta nunca vira "
-                        + "incidente sozinho — a associação é manual, invertida e opcional")
+                .as("com.sentinel.alerting não referencia Incident: a decisão de destino "
+                        + "morar FORA do engine (evento neutro de nascimento + hook de "
+                        + "pós-avaliação), nunca tipo/tabela/coluna aqui")
                 .isEmpty();
     }
 

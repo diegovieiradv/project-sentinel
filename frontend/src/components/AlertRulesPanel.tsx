@@ -20,6 +20,8 @@ import {
   type ServiceStatus,
 } from "@/lib/api";
 import {
+  AUTO_CREATE_INCIDENT_HINT,
+  AUTO_CREATE_INCIDENT_LABEL,
   OPERATOR_LABELS,
   SEVERITY_LABELS,
   STATUS_THRESHOLD_LABELS,
@@ -900,6 +902,30 @@ export default function AlertRulesPanel({
                                   </div>
                                 </div>
 
+                                {/* Automação (Prompt 15) — opt-in, PATCH como
+                                    qualquer outro campo de configuração */}
+                                <label className="flex max-w-xl items-start gap-2 text-sm text-white">
+                                  <input
+                                    type="checkbox"
+                                    checked={editForm.autoCreateIncident}
+                                    onChange={(event) =>
+                                      setEditForm((form) => ({
+                                        ...form,
+                                        autoCreateIncident:
+                                          event.target.checked,
+                                      }))
+                                    }
+                                    disabled={busy}
+                                    className="mt-0.5 h-4 w-4 accent-(--accent)"
+                                  />
+                                  <span className="flex flex-col gap-0.5">
+                                    <span>{AUTO_CREATE_INCIDENT_LABEL}</span>
+                                    <span className="text-xs text-(--muted)">
+                                      {AUTO_CREATE_INCIDENT_HINT}
+                                    </span>
+                                  </span>
+                                </label>
+
                                 <div className="flex flex-wrap items-center gap-2">
                                   <button
                                     type="submit"
@@ -1163,6 +1189,28 @@ export default function AlertRulesPanel({
               </p>
             </div>
           </div>
+
+          {/* Automação (Prompt 15) — nasce desligada (opt-in) */}
+          <label className="flex max-w-xl items-start gap-2 text-sm text-white">
+            <input
+              type="checkbox"
+              checked={createForm.autoCreateIncident}
+              onChange={(event) =>
+                setCreateForm((form) => ({
+                  ...form,
+                  autoCreateIncident: event.target.checked,
+                }))
+              }
+              disabled={busy}
+              className="mt-0.5 h-4 w-4 accent-(--accent)"
+            />
+            <span className="flex flex-col gap-0.5">
+              <span>{AUTO_CREATE_INCIDENT_LABEL}</span>
+              <span className="text-xs text-(--muted)">
+                {AUTO_CREATE_INCIDENT_HINT}
+              </span>
+            </span>
+          </label>
 
           <div className="flex flex-wrap items-center gap-2">
             <button

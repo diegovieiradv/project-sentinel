@@ -95,9 +95,11 @@ public class Alert {
      * Incidente a que este alerta está associado (Prompt 14) — coluna
      * {@code incident_id} da V11, {@code null} na grande maioria.
      *
-     * <p><b>Associação manual, nunca automática:</b> só o IncidentService
-     * escreve este vínculo (UPDATE condicional na própria regra, sem passar
-     * por aqui) — o Alert Engine não conhece a coluna e nenhum alerta nasce
+     * <p><b>Associação nunca pelo motor de alertas:</b> só o IncidentService
+     * (manual, Prompt 14) e o {@code AlertIncidentLinker} (automação, Prompt
+     * 15) escrevem este vínculo — e ambos por UPDATE condicional no banco,
+     * nunca por aqui. O Alert Engine não conhece a coluna (a decisão mora em
+     * {@code com.sentinel.project.alert.automation}) e nenhum alerta nasce
      * vinculado. LAZY de propósito: a listagem de alertas (AlertResponse) não
      * toca no incidente, então não há select extra por linha.</p>
      *

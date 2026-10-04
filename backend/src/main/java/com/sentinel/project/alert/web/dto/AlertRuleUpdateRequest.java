@@ -63,6 +63,16 @@ public class AlertRuleUpdateRequest {
     private EvaluationWindow window;
     private AlertSeverity severity;
 
+    /**
+     * Opt-in de automação Alert → Incident (Prompt 15) — {@link Boolean}
+     * (wrapper) de propósito: no PATCH, "ausente" é "não altera" e só um
+     * booleano PRIMITIVO não distingue ausente de {@code false} (igual ao
+     * dilema de {@code monitorId}). {@code null} → não mexe na flag; valor →
+     * liga/desliga para os PRÓXIMOS disparos (nunca reabre/recria incidente
+     * já existente).
+     */
+    private Boolean autoCreateIncident;
+
     private UUID monitorId;
     private boolean monitorIdSet;
 
@@ -147,5 +157,14 @@ public class AlertRuleUpdateRequest {
 
     public void setSeverity(AlertSeverity severity) {
         this.severity = severity;
+    }
+
+    /** {@code null} = ausente da payload → flag não muda; senão liga/desliga. */
+    public Boolean getAutoCreateIncident() {
+        return autoCreateIncident;
+    }
+
+    public void setAutoCreateIncident(Boolean autoCreateIncident) {
+        this.autoCreateIncident = autoCreateIncident;
     }
 }

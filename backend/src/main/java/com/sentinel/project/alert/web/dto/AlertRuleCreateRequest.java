@@ -40,6 +40,19 @@ import jakarta.validation.constraints.Size;
  *
  * <p>{@code thresholdNumeric} e {@code thresholdStatus} são anuláveis de
  * propósito: qual dos dois é obrigatório também é decisão do tipo.</p>
+ *
+ * <p><b>{@code autoCreateIncident} (Prompt 15):</b> opt-in de automação
+ * Alert → Incident. {@code Boolean} (wrapper) — não {@code boolean}
+ * primitivo: com Jackson 3 ({@code FAIL_ON_NULL_FOR_PRIMITIVES} ligado por
+ * padrão) uma chave AUSENTE no JSON vira {@code null} e um primitivo
+ * rejeitaria todo payload legado com 400 "Malformed request body" (contrato
+ * de compatibilidade: criar regra sem a chave continua o mesmo comportamento
+ * do Prompt 12). {@code null}/ausente é normalizado para {@code false} no
+ * service, que É o default do banco (V12) — mesmo arranjo do
+ * {@code Boolean active} do {@code AlertRuleActivationRequest}. Sem
+ * {@code @NotNull}: não é obrigatório, só precisa ser booleano quando
+ * presente (JSON {@code "autoCreateIncident": "sim"} → 400 de
+ * desserialização, mesmo contrato dos demais campos tipados).</p>
  */
 public record AlertRuleCreateRequest(
         @NotBlank @Size(max = 120, message = "must be at most 120 characters") String name,
@@ -49,5 +62,6 @@ public record AlertRuleCreateRequest(
         ServiceStatus thresholdStatus,
         @NotNull EvaluationWindow window,
         @NotNull AlertSeverity severity,
-        UUID monitorId) {
+        UUID monitorId,
+        Boolean autoCreateIncident) {
 }

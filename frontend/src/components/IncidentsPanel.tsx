@@ -14,12 +14,14 @@ import {
 } from "@/lib/api";
 import {
   INCIDENT_SEVERITY_OPTIONS,
+  INCIDENT_SOURCE_LABELS,
   INCIDENT_STATUS_LABELS,
   INCIDENT_STATUS_OPTIONS,
   canManageIncidents,
   formatIncidentInstant,
   incidentsViewState,
   incidentSeverityBadgeClasses,
+  incidentSourceBadgeClasses,
   incidentStatusBadgeClasses,
   openIncidentCount,
   type IncidentsListStatus,
@@ -374,8 +376,22 @@ export default function IncidentsPanel({
                         {incident.title}
                       </td>
                       <td className="py-2 pr-3">
-                        <span className={incidentStatusBadgeClasses(incident.status)}>
-                          {INCIDENT_STATUS_LABELS[incident.status]}
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={incidentStatusBadgeClasses(
+                              incident.status
+                            )}
+                          >
+                            {INCIDENT_STATUS_LABELS[incident.status]}
+                          </span>
+                          {/* Origem (Prompt 15) — palavra + cor, nunca só cor */}
+                          <span
+                            className={incidentSourceBadgeClasses(
+                              incident.source
+                            )}
+                          >
+                            {INCIDENT_SOURCE_LABELS[incident.source]}
+                          </span>
                         </span>
                       </td>
                       <td className="py-2 pr-3 text-(--muted)">

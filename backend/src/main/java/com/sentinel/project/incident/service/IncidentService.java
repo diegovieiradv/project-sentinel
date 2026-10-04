@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.sentinel.error.ApiException;
@@ -18,6 +19,7 @@ import com.sentinel.project.alert.web.dto.AlertResponse;
 import com.sentinel.project.incident.model.Incident;
 import com.sentinel.project.incident.model.IncidentEvent;
 import com.sentinel.project.incident.model.IncidentEventType;
+import com.sentinel.project.incident.model.IncidentSource;
 import com.sentinel.project.incident.model.IncidentStatus;
 import com.sentinel.project.incident.repository.IncidentEventRepository;
 import com.sentinel.project.incident.repository.IncidentRepository;
@@ -43,12 +45,18 @@ import org.springframework.transaction.annotation.Transactional;
  * Organization → Project → Service → Incident, com a timeline append-only do
  * ciclo de vida manual.
  *
- * <p><b>Nascido de um humano:</b> só existe {@code POST}; nada em
- * {@code com.sentinel.alerting} referencia este pacote (travado por
+ * <p><b>Duas origens, um único escritor de timeline:</b> o create manual
+ * continua sendo só {@code POST} — nada em {@code com.sentinel.alerting}
+ * referencia este pacote (travado por
  * {@code MonitoringEngineBoundaryTest.alertingPackageHasNoIncidentReferences}),
- * não há trigger/listener/scheduler e nenhum alerta vira incidente sozinho —
+ * não há trigger/listener/scheduler e nenhum alerta vira incidente sozinho:
  * a associação é opcional, invertida ({@code alerts.incident_id}) e feita
- * DEPOIS, por este service.</p>
+ * DEPOIS, por este service. Desde o Prompt 15 existe UM segundo caminho de
+ * nascimento, fora desta classe de request: a automação Alert → Incident
+ * ({@code com.sentinel.project.alert.automation}, opt-in por regra) chama
+ * {@link #createAutomated} quando a flag da regra está ligada — o Alert
+ * Engine continua sem conhecer este pacote, e a rota manual não muda em
+ * nada.</p>
  *
  * <p><b>Ordem das checagens (contrato público, ver docs/incidents.md):</b></p>
  * <ol>
@@ -170,6 +178,82 @@ public class IncidentService {
                 service, title, description, severity, startedAt, actor));
         emit(incident, IncidentEventType.CREATED, "Incident created", actor);
         return IncidentResponse.from(incident, TenantContext.role());
+    }
+
+    // --- automação Alert → Incident (Prompt 15) -----------------------------
+
+    /**
+     * Cria um incidente <b>automático</b> ({@link IncidentSource#ALERT_AUTOMATION})
+     * com {@code createdByUserId} {@code null} — não existe humano por trás
+     * de uma abertura opt-in da regra, e inventar um "autor" seria mentira de
+     * auditoria.
+     *
+     * <p><b>Sem request, sem papel, sem TenantContext:</b> este método é
+     * chamado APENAS pelo {@code AlertIncidentAutomation}, dentro da
+     * transação da própria automação (correlação + criação + vínculo +
+     * timeline são ATÔMICOS juntos). Nenhuma validação de API roda aqui: o
+     * título/chave já chega sanitizado e truncado pelo chamador (fonte: nome
+     * da regra + mensagem do alerta — entrada de DONO DE PROJETO, não de
+     * usuário anônimo, e truncada no limite da coluna pelo próprio
+     * construtor). A timeline nasce vazia: a linha {@code CREATED} é gravada
+     * pelo publisher da automação, na mesma transação.</p>
+     *
+     * <p><b>Não é reabertura:</b> quem decide se CRIA ou REUTILIZA é a
+     * correlação ({@link #findOpenAutomatedByServiceId}) — este método
+     * sempre cria uma linha nova e nunca toca em incidente existente.</p>
+     *
+     * <p><b>Validação de domínio aqui mesmo (revisão P2-6):</b> este caminho
+     * não passa pelo {@code @Valid} do controller nem pela checagem de
+     * título do create manual, mas continua escrevendo nas MESMAS colunas —
+     * título em branco estouraria o {@code CHECK} não-vazio da V11 como
+     * {@code DataIntegrityViolationException} (500 opaco) em vez de um erro
+     * legível. As checagens abaixo espelham {@link #validateTitle}; os demais
+     * argumentos são {@code requireNonNull} nomeado, como no construtor do
+     * {@code Incident}.</p>
+     */
+    @Transactional
+    public Incident createAutomated(
+            Service service,
+            String title,
+            String description,
+            AlertSeverity severity,
+            Instant startedAt) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(severity, "severity");
+        Objects.requireNonNull(startedAt, "startedAt");
+        if (title == null || title.isBlank()) {
+            throw new ApiException(
+                    "VALIDATION_ERROR", "title: must not be blank", HttpStatus.BAD_REQUEST);
+        }
+        if (title.length() > Incident.MAX_TITLE_LENGTH) {
+            throw new ApiException(
+                    "VALIDATION_ERROR",
+                    "title: must be at most " + Incident.MAX_TITLE_LENGTH + " characters",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return incidentRepository.saveAndFlush(new Incident(
+                service,
+                title,
+                description,
+                severity,
+                startedAt,
+                IncidentSource.ALERT_AUTOMATION,
+                null));
+    }
+
+    /**
+     * Incidente automático ainda ABERTO do serviço — o que uma segunda regra
+     * (ou um segundo alerta da mesma regra) deve REUTILIZAR em vez de abrir
+     * outro. Filtro de origem: um incidente que um HUMANO abriu não é
+     * "reaberto" pela automação; filtro de status: {@code RESOLVED} nunca é
+     * reutilizado (o próximo disparo nasce um novo, como um ser humano
+     * faria). Carregado {@code readOnly} — a decisão de escrever é da
+     * automação, não desta leitura.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Incident> findOpenAutomatedByServiceId(UUID serviceId) {
+        return incidentRepository.findByServiceIdAndSourceAndStatusNot(
+                serviceId, IncidentSource.ALERT_AUTOMATION, IncidentStatus.RESOLVED);
     }
 
     // --- GET .../incidents --------------------------------------------------

@@ -16,6 +16,7 @@ import java.util.UUID;
 import com.sentinel.project.alert.model.AlertSeverity;
 import com.sentinel.project.incident.model.Incident;
 import com.sentinel.project.incident.model.IncidentEventType;
+import com.sentinel.project.incident.model.IncidentSource;
 import com.sentinel.project.incident.model.IncidentStatus;
 
 import org.junit.jupiter.api.AfterAll;
@@ -177,6 +178,44 @@ class IncidentApiTest extends AbstractIncidentIntegrationTest {
         assertThat(Duration.between(incidentOf(serviceId, id).getStartedAt(), startedAt).abs())
                 .as("TIMESTAMPTZ guarda microssegundos: só o nano extra é arredondado")
                 .isLessThanOrEqualTo(Duration.ofNanos(1_000));
+    }
+
+    /**
+     * Revisão P2-5: {@code source} e {@code createdByUserId} são
+     * SERVER-OWNED — o POST aceita o campo no body (Jackson ignora o
+     * desconhecido) e responde {@code MANUAL} com o ator real do token.
+     * Só a automação interna escreve {@code ALERT_AUTOMATION}, e é com
+     * ator nulo — nunca por mandar o enum no payload.
+     */
+    @Test
+    void createIgnoresSourceAndAlwaysRespondsManual() throws Exception {
+        Fixture org = newOrganization(uniqueEmail("incident-source"), "Org Incident Source");
+        String projectId = createProject(org.ownerBearer(), org.organizationId(), "Projeto Source");
+        String serviceId = createService(org.ownerBearer(), org.organizationId(), projectId, "Serviço Source");
+
+        UUID spoofedActor = UUID.randomUUID();
+        Map<String, Object> body = incidentPayload("Origem não é client-owned");
+        body.put("source", "ALERT_AUTOMATION");
+        body.put("createdByUserId", spoofedActor.toString());
+
+        MvcResult result = mockMvc.perform(postCsrf(
+                                incidentsUrl(org.organizationId(), projectId, serviceId))
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.source").value("MANUAL"))
+                .andReturn();
+
+        Map<String, Object> response = responseBody(result);
+        String id = (String) response.get("id");
+        assertThat((String) response.get("createdByUserId"))
+                .as("o ator vem do token, nunca do body")
+                .isNotBlank()
+                .isNotEqualTo(spoofedActor.toString());
+        assertThat(incidentOf(serviceId, id).getSource())
+                .as("source é server-owned: o POST não a escreve")
+                .isEqualTo(IncidentSource.MANUAL);
     }
 
     // --- POST / validação ---------------------------------------------------

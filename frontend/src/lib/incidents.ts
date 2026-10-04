@@ -20,6 +20,7 @@ import type {
   IncidentEventResponse,
   IncidentEventType,
   IncidentResponse,
+  IncidentSource,
   IncidentStatus,
   OrganizationRole,
 } from "./api";
@@ -64,6 +65,16 @@ export const INCIDENT_EVENT_TYPE_LABELS: Record<IncidentEventType, string> = {
   DESCRIPTION_CHANGED: "Description changed",
   ALERT_LINKED: "Alert linked",
   ALERT_UNLINKED: "Alert unlinked",
+};
+
+/**
+ * Rótulo da origem (Prompt 15) — sempre com palavra: `MANUAL` nasceu por
+ * humano, `ALERT_AUTOMATION` nasceu sozinho quando a regra disparou. A UI
+ * nunca mostra o enum cru nem diferencia origem só por cor.
+ */
+export const INCIDENT_SOURCE_LABELS: Record<IncidentSource, string> = {
+  MANUAL: "Manual",
+  ALERT_AUTOMATION: "Auto-created",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -153,6 +164,16 @@ export function incidentActorLabel(
   return event.actorUserId ?? "—";
 }
 
+/**
+ * Autor do INCIDENTE, em texto curto — `null` (automático: não existe humano
+ * por trás) vira `—`, mesmo critério de `incidentActorLabel`.
+ */
+export function incidentAuthorLabel(
+  incident: Pick<IncidentResponse, "createdByUserId">
+): string {
+  return incident.createdByUserId ?? "—";
+}
+
 /* -------------------------------------------------------------------------- */
 /* Estado da view da listagem (decisão ÚNICA, sem DOM)                         */
 /* -------------------------------------------------------------------------- */
@@ -225,3 +246,19 @@ export function incidentStatusBadgeClasses(status: IncidentStatus): string {
 
 /** Classes do badge por severidade — reusa a mesma decisão do alerta. */
 export { severityBadgeClasses as incidentSeverityBadgeClasses } from "./alerts";
+
+/**
+ * Classes do badge por ORIGEM (Prompt 15) — a palavra vem junto via
+ * `INCIDENT_SOURCE_LABELS` (a cor nunca é o único sinal). `MANUAL` fica
+ * discreto (borda, como um estado encerrado) e `ALERT_AUTOMATION` ganha o
+ * destaque do accent, para o leitor notar de imediato que ninguém criou
+ * aquele incidente.
+ */
+export function incidentSourceBadgeClasses(source: IncidentSource): string {
+  switch (source) {
+    case "MANUAL":
+      return "rounded border border-(--border) bg-(--background) px-1.5 py-0.5 text-xs font-semibold text-(--muted)";
+    case "ALERT_AUTOMATION":
+      return "rounded bg-(--accent) px-1.5 py-0.5 text-xs font-semibold text-white";
+  }
+}

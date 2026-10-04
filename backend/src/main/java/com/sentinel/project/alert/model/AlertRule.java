@@ -28,10 +28,14 @@ import jakarta.persistence.Table;
  *
  * <p><b>O que esta entidade É e o que NÃO é:</b> aqui vive apenas a
  * <b>configuração declarativa</b> de uma condição (tipo, operador, threshold,
- * janela, severidade). NÃO existe coluna de resultado — nenhum valor avaliado,
- * nenhum alerta disparado, nenhum incidente: a AVALIAÇÃO automática é do Alert
- * Engine (Prompt 13) e a ausência total desse material é contrato deste
- * prompt, não omissão.</p>
+ * janela, severidade) e, desde o Prompt 15, a <b>flag opt-in</b>
+ * {@code autoCreateIncident} ("quando disparar, abra/associe um incidente" —
+ * pura configuração, default {@code false}, mesma natureza de {@code active}).
+ * NÃO existe coluna de resultado — nenhum valor avaliado, nenhum alerta
+ * disparado, nenhum incidente: a AVALIAÇÃO automática é do Alert Engine
+ * (Prompt 13) e a criação/incidência é do {@code alert.automation} (Prompt
+ * 15); esta tabela nunca guarda id de incidente nem estado de automação,
+ * apenas o desejo do dono.</p>
  *
  * <p><b>Threshold numérico × status (type-safe, nunca string em número):</b>
  * dois campos mutuamente exclusivos — {@code thresholdNumeric} para os quatro
@@ -158,6 +162,18 @@ public class AlertRule {
     @Column(nullable = false)
     private boolean active;
 
+    /**
+     * Opt-in de automação Alert → Incident (Prompt 15) — {@code BOOLEAN NOT
+     * NULL DEFAULT FALSE} da migration V12. <b>Configuração, não resultado:</b>
+     * diz "eu QUISSER que um disparo desta regra abra/associe um incidente",
+     * nunca "abriu". Nasce {@code false} (nenhum comportamento muda para quem
+     * não pediu), muda pelo create/update (mesmo contrato dos demais campos
+     * editáveis — é dono quem liga) e é lido pela automação a cada avaliação
+     * (reconciliação) e a cada nascimento de alerta.
+     */
+    @Column(name = "auto_create_incident", nullable = false)
+    private boolean autoCreateIncident;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -208,6 +224,7 @@ public class AlertRule {
         this.window = window;
         this.severity = severity;
         this.active = true;
+        this.autoCreateIncident = false; // opt-in: sem pedido, sem automação
     }
 
     @PrePersist
@@ -280,6 +297,16 @@ public class AlertRule {
         this.active = active;
     }
 
+    /**
+     * Liga/desliga o opt-in de automação — chamado exclusivamente pelo
+     * {@code AlertRuleService} (create e update). Desligar a flag não mexe em
+     * incidente/já-criado: o efeito é só nos PRÓXIMOS disparos/reconciliações
+     * (o histórico — alerta e incidente já existentes — é intocável).
+     */
+    public void setAutoCreateIncident(boolean autoCreateIncident) {
+        this.autoCreateIncident = autoCreateIncident;
+    }
+
     // --- leitura ------------------------------------------------------------
 
     public UUID getId() {
@@ -328,6 +355,11 @@ public class AlertRule {
 
     public boolean isActive() {
         return active;
+    }
+
+    /** Opt-in da automação Alert → Incident (default {@code false}). */
+    public boolean isAutoCreateIncident() {
+        return autoCreateIncident;
     }
 
     public Instant getCreatedAt() {

@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   INCIDENT_EVENT_TYPE_LABELS,
   INCIDENT_SEVERITY_LABELS,
+  INCIDENT_SOURCE_LABELS,
   INCIDENT_STATUS_LABELS,
   INCIDENT_STATUS_OPTIONS,
   INCIDENT_TRANSITIONS,
@@ -26,8 +27,10 @@ import {
   formatIncidentInstant,
   hasIncidentContentChanges,
   incidentActorLabel,
+  incidentAuthorLabel,
   incidentEventLine,
   incidentSeverityBadgeClasses,
+  incidentSourceBadgeClasses,
   incidentStatusBadgeClasses,
   incidentsViewState,
   isResolved,
@@ -71,6 +74,7 @@ const OPEN_INCIDENT: IncidentResponse = {
   description: "Paginação de 500 no checkout desde as 09:12",
   severity: "SEV1",
   status: "OPEN",
+  source: "MANUAL",
   startedAt: "2026-03-01T09:12:00Z",
   resolvedAt: null,
   createdByUserId: USER_ID,
@@ -198,6 +202,17 @@ describe("rótulos", () => {
     ]);
     for (const label of Object.values(INCIDENT_EVENT_TYPE_LABELS)) {
       expect(label).not.toBe("");
+      expect(label).toBe(label.trim());
+    }
+
+    // origem (Prompt 15) — as DUAS entradas do enum, sempre com palavra
+    expect(Object.keys(INCIDENT_SOURCE_LABELS)).toEqual([
+      "MANUAL",
+      "ALERT_AUTOMATION",
+    ]);
+    for (const label of Object.values(INCIDENT_SOURCE_LABELS)) {
+      expect(label).not.toBe("");
+      expect(label).toBe(label.trim());
     }
   });
 
@@ -322,6 +337,14 @@ describe("timeline", () => {
     );
     expect(incidentActorLabel(CREATED_EVENT)).not.toContain("@");
   });
+
+  it("incidentAuthorLabel: UUID do autor ou — quando automático (nulo)", () => {
+    expect(incidentAuthorLabel(OPEN_INCIDENT)).toBe(USER_ID);
+    expect(
+      incidentAuthorLabel({ ...OPEN_INCIDENT, createdByUserId: null })
+    ).toBe("—");
+    expect(incidentAuthorLabel(OPEN_INCIDENT)).not.toContain("@");
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -388,6 +411,14 @@ describe("decisão de renderização", () => {
         )
       : [];
     expect(new Set(severities).size).toBe(4);
+  });
+
+  it("badge de origem é distinto por MANUAL × ALERT_AUTOMATION", () => {
+    const sources = (["MANUAL", "ALERT_AUTOMATION"] as const).map(
+      incidentSourceBadgeClasses
+    );
+    for (const classes of sources) expect(classes.trim()).not.toBe("");
+    expect(new Set(sources).size).toBe(2);
   });
 });
 
@@ -464,6 +495,7 @@ describe("createIncident", () => {
       "projectId",
       "serviceId",
       "status",
+      "source",
       "startedAt",
       "resolvedAt",
       "createdByUserId",
@@ -717,6 +749,7 @@ describe("fronteira do prompt", () => {
       "projectId",
       "serviceId",
       "status",
+      "source",
       "resolvedAt",
       "createdByUserId",
       "version",

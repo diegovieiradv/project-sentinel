@@ -1,8 +1,8 @@
 # Incidents — Sentinel
 
-> **Prompt 14 de 18** — o ciclo de vida MANUAL de incidente de um serviço e a sua timeline append-only: o humano abre, tria, edita, move de status, resolve e associa alertas; a API registra cada mudança como um fato histórico imutável. Este documento descreve **o que está construído**: tabelas `incidents` e `incident_events` + coluna `alerts.incident_id` (migration `V11`), sub-pacote `com.sentinel.project.incident`, o sub-recurso `.../services/{serviceId}/incidents` (9 handlers) e o painel `IncidentsPanel` no frontend. A configuração de regras é a do [alert-rules.md](alert-rules.md), a avaliação que produz os alertas é a do [alert-engine.md](alert-engine.md), a hierarquia de serviço é a do [services.md](services.md) e a base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
+> **Prompt 14 de 18** — o ciclo de vida MANUAL de incidente de um serviço e a sua timeline append-only: o humano abre, tria, edita, move de status, resolve e associa alertas; a API registra cada mudança como um fato histórico imutável. Este documento descreve **o que está construído**: tabelas `incidents` e `incident_events` + coluna `alerts.incident_id` (migration `V11`; a `V12` acrescentou `incidents.source`, o ator anulável e os índices de correlação), sub-pacote `com.sentinel.project.incident`, o sub-recurso `.../services/{serviceId}/incidents` (9 handlers) e o painel `IncidentsPanel` no frontend. A configuração de regras é a do [alert-rules.md](alert-rules.md), a avaliação que produz os alertas é a do [alert-engine.md](alert-engine.md), a abertura automática é a do [alert-incident-automation.md](alert-incident-automation.md), a hierarquia de serviço é a do [services.md](services.md) e a base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
 
-**Um `Incident` é aberto POR UM HUMANO e nunca por automação**: não existe trigger, listener ou scheduler que transforme `Alert` em `Incident`. O vínculo é **invertido** — mora em `alerts.incident_id`, um alerta pertence a **no máximo um** incidente e um incidente pode reunir vários. O Alert Engine não conhece este módulo (fronteira travada por `MonitoringEngineBoundaryTest`).
+**Um `Incident` MANUAL é aberto POR UM HUMANO** — o caminho manual (`POST .../incidents`) continua atribuindo o autor autenticado do `TenantContext` e nenhuma linha deste módulo cria `Incident` a partir de `Alert`. Desde o **Prompt 15** existe, porém, a **automação opt-in** por regra (`alert_rules.auto_create_incident`, ver [alert-incident-automation.md](alert-incident-automation.md)): com a flag ligada, o nascimento de um alerta cria um incidente com `source = ALERT_AUTOMATION` e `created_by_user_id = NULL` — um **segundo caminho de escrita**, fora destes handlers, sem rota própria. O vínculo continua **invertido** — mora em `alerts.incident_id`, um alerta pertence a **no máximo um** incidente e um incidente pode reunir vários. O Alert Engine não conhece este módulo (fronteira travada por `MonitoringEngineBoundaryTest`).
 
 ## 1. Escopo implementado
 
@@ -20,8 +20,8 @@
 | Concorrência: `@Version` no `Incident` → `409`; `UPDATE ... WHERE incident_id IS NULL` + releitura/classificação no alerta (índice `idx_alerts_incident` não-único, só para listagem) | Construído |
 | Frontend: cliente (9 funções) + helpers (`lib/incidents.ts`) + `IncidentsPanel`/`IncidentDetail` | Construído |
 | Remoção de incidente (`DELETE /{incidentId}`) | **Fora do escopo** (a rota devolve `405`) |
-| Notificações, ack, silenciamento, escalonamento, atribuição, on-call, correlação, postmortem, reabertura | **Fora do escopo** (Prompt 15+) |
-| Automação Alert → Incident | **Fora do escopo** (não há gatilho algum) |
+| Notificações, ack, silenciamento, escalonamento, atribuição, on-call, correlação, postmortem, reabertura | **Fora do escopo** (Prompt 16+) |
+| Automação Alert → Incident (flag `auto_create_incident`, `source`, gatilhos) | **Fora do escopo do Prompt 14** — **construído no Prompt 15** (ver [alert-incident-automation.md](alert-incident-automation.md)) |
 
 ## 2. Conceito e fluxo
 
@@ -58,13 +58,15 @@ graph LR
 | `status` | `VARCHAR(15) NOT NULL` | `CHECK (OPEN, INVESTIGATING, IDENTIFIED, RESOLVED)` |
 | `started_at` | `TIMESTAMPTZ NOT NULL` | payload ou relógio do domínio; janela `[-30d, +5min]` |
 | `resolved_at` | `TIMESTAMPTZ NULL` | preenchido **exatamente** quando `status = RESOLVED` |
-| `created_by_user_id` | `UUID NOT NULL` → `users(id)` | `ON DELETE RESTRICT` |
+| `created_by_user_id` | `UUID NULL` → `users(id)` | `ON DELETE RESTRICT`; **`NOT NULL` na V11**, anulado pela V12 para o incidente automático — o caminho **manual** continua preenchendo o ator a partir do `TenantContext` (o construtor de 6 argumentos exige não-nulo) |
 | `created_at` / `updated_at` | `TIMESTAMPTZ NOT NULL` | `updated_at` mantido pela aplicação (`@PreUpdate`) |
 | `version` | `BIGINT NOT NULL` | `@Version` do JPA — escudo de concorrência |
 
 CHECKs: `incidents_title_not_blank`, `incidents_severity_check`, `incidents_status_check` e **`incidents_lifecycle_check`** — `resolved_at` existe **exatamente** quando o status é `RESOLVED` (a máquina de estados amarra as duas; o CHECK vigia a "metade escrita" da linha).
 
 Índices: `idx_incidents_service_started_desc (service_id, started_at DESC)` (ordem da API), `idx_incidents_service_status` e `idx_incidents_service_severity` (os dois filtros).
+
+**Coluna da V12 (Prompt 15)**: `source VARCHAR(20) NOT NULL DEFAULT 'MANUAL'` + `CHECK incidents_source_check (MANUAL, ALERT_AUTOMATION)` — quem nasceu o incidente; as linhas pré-V12 recebem `'MANUAL'`. A resposta da API passou a serializar `source`. Detalhes em [alert-incident-automation.md](alert-incident-automation.md) §3.
 
 ### 3.2 `IncidentEvent` (tabela `incident_events`, `V11`)
 
@@ -157,7 +159,7 @@ Detalhe completo, incluindo `role` do usuário. Id malformado → o mesmo `404` 
 
 ### 6.5 `PATCH .../incidents/{incidentId}` → `200`
 
-Body **parcial** `{title?, description?, severity?}`. Campo ausente não altera; `description: ""` limpa (vira `null`); `title` em branco → `400`. Campos server-owned (`id`, `serviceId`, `status`, `startedAt`, `resolvedAt`, `createdByUserId`, `version`) **não existem no DTO** e são ignorados se enviados (mass assignment).
+Body **parcial** `{title?, description?, severity?}`. Campo ausente não altera; `description: ""` limpa (vira `null`); `title` em branco → `400`. Campos server-owned (`id`, `serviceId`, `status`, `startedAt`, `resolvedAt`, `createdByUserId`, `source`, `version`) **não existem no DTO** e são ignorados se enviados (mass assignment).
 
 Cada campo que realmente mudou gera **um evento** com a mensagem fixa:
 
@@ -302,17 +304,17 @@ Frontend: `src/lib/incidents.test.ts` (**33 testes**) cobre rótulos, a máquina
 
 Os testes de incidente que precisam do Alert Engine (seeding de alerta real) importam `FixedMetricsClockConfig`; os demais usam o `SystemClock` — `startedAt` é validado contra o relógio real, então um relógio fixo antigo violaria a janela de 30 dias.
 
-## 13. Fronteira com o Prompt 15 (fora do escopo)
+## 13. Fronteira com o Prompt 16 (fora do escopo)
 
 ```mermaid
 graph LR
-    ALRT["Alert (FIRING→RESOLVED)<br/>✅ P13"] -.->|vínculo invertido<br/>alerts.incident_id| INC["Incident<br/>✅ P14"]
+    ALRT["Alert (FIRING→RESOLVED)<br/>✅ P13"] -.->|vínculo invertido<br/>alerts.incident_id| INC["Incident<br/>✅ P14 (manual)<br/>✅ P15 (automação opt-in)"]
     INC --> EV["incident_events<br/>✅ P14 (append-only)"]
-    INC -.x. NEXT["notificações / ack / silêncio /<br/>escalonamento / on-call / postmortem<br/>⛔ NOT IMPLEMENTED (P15+)"]
-    ALRT -.x. AUTO["automação Alert → Incident<br/>⛔ sem trigger, listener ou scheduler"]
+    FLAG["alert_rules.auto_create_incident<br/>✅ P15"] -. cria com source=.-> INC
+    INC -.x. NEXT["notificações / ack / silêncio /<br/>escalonamento / on-call / postmortem<br/>⛔ NOT IMPLEMENTED (P16+)"]
 ```
 
-- **Não há automação**: nenhuma linha de código cria `Incident` a partir de `Alert`. O Alert Engine não referencia o pacote `incident` (travado por `alertingPackageHasNoIncidentReferences`).
-- **Não há notificação, ack, silenciamento, escalonamento, atribuição, on-call, correlação ou postmortem** — nenhuma tabela, endpoint, campo ou enum para eles.
+- **A automação entrou no Prompt 15** (fora destes handlers): com a flag da regra ligada, o nascimento de um alerta cria incidente `source = ALERT_AUTOMATION` com ator nulo e título `[AUTO]` — ver [alert-incident-automation.md](alert-incident-automation.md). O Alert Engine **continua sem referenciar** o pacote `incident` (travado por `alertingPackageHasNoIncidentReferences`); quem escreve é o pacote `alert.automation`, notificado por hook/evento neutros.
+- **Não há notificação, ack, silenciamento, escalonamento, atribuição, on-call, correlação ou pós-mortem** — nenhuma tabela, endpoint, campo ou enum para eles (Prompt 16+).
 - **Não há reabertura**: `RESOLVED` é terminal e não existe `DELETE` de incidente (a rota devolve `405`).
 - **Não há scheduler nem `@Scheduled`** neste módulo — o único relógio é o `Clock` injetado.

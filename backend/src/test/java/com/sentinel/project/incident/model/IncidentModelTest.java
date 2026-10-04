@@ -106,6 +106,58 @@ class IncidentModelTest {
                 .isEqualTo(IncidentStatus.OPEN);
     }
 
+    // --- origem (Prompt 15) -------------------------------------------------
+
+    @Test
+    void construtor_de_seis_argumentos_delega_para_origem_manual() {
+        assertThat(incident("delegado").getSource())
+                .as("o caminho antigo (Prompt 14) continua MANUAL, com ator")
+                .isEqualTo(IncidentSource.MANUAL);
+        assertThat(incident("delegado").getCreatedByUserId()).isEqualTo(ACTOR);
+    }
+
+    @Test
+    void origem_manual_exige_autor_em_qualquer_construtor() {
+        assertThatThrownBy(() -> new Incident(
+                        detachedService(), "Manual sem autor", null,
+                        AlertSeverity.SEV2, OPENED_AT, IncidentSource.MANUAL, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("createdByUserId");
+    }
+
+    @Test
+    void origem_de_automacao_aceita_autor_nulo() {
+        Incident incident = new Incident(
+                detachedService(),
+                "[AUTO] Regra de latência fora",
+                null,
+                AlertSeverity.SEV1,
+                OPENED_AT,
+                IncidentSource.ALERT_AUTOMATION,
+                null);
+
+        assertThat(incident.getSource()).isEqualTo(IncidentSource.ALERT_AUTOMATION);
+        assertThat(incident.getCreatedByUserId())
+                .as("automação não tem ator humano — só a origem diz quem abriu")
+                .isNull();
+        assertThat(incident.getStatus())
+                .as("nasce OPEN como qualquer outro, mesmo sem ator")
+                .isEqualTo(IncidentStatus.OPEN);
+        assertThat(incident.getStartedAt()).isEqualTo(OPENED_AT);
+    }
+
+    @Test
+    void origem_nula_e_rejeitada_antes_de_mutar() {
+        assertThatThrownBy(() -> new Incident(
+                        detachedService(), "t", null, AlertSeverity.SEV3, OPENED_AT,
+                        null, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("source");
+        assertThat(incident("intacto").getSource())
+                .as("objeto inválido não é meio-criado nem altera os válidos")
+                .isEqualTo(IncidentSource.MANUAL);
+    }
+
     // --- sanitização --------------------------------------------------------
 
     @Test

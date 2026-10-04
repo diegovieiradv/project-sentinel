@@ -135,7 +135,10 @@ public class AlertRuleService {
      * escopo) e nasce {@code active=true} — o servidor define, payload não
      * opina. Conição validada pela matriz ANTES de qualquer escrita; escopo de
      * monitor (quando presente) é provado por último, na MESMA cadeia do
-     * detalhe (Service → Monitor).
+     * detalhe (Service → Monitor). A flag {@code autoCreateIncident} (Prompt
+     * 15) É do payload (é configuração editável, ao contrário de
+     * {@code active}): ausente = {@code false} = mesmo comportamento do
+     * Prompt 12.
      */
     @Transactional
     public AlertRuleResponse create(UUID projectId, UUID serviceId, AlertRuleCreateRequest request) {
@@ -155,19 +158,20 @@ public class AlertRuleService {
         }
         Monitor monitor = findMonitorIfPresent(service, request.monitorId());
 
-        AlertRule rule;
+        AlertRule rule = new AlertRule(
+                service,
+                name,
+                monitor,
+                request.type(),
+                request.operator(),
+                request.thresholdNumeric(),
+                request.thresholdStatus(),
+                request.window(),
+                request.severity());
+        // ausente (null) → false = default V12 = comportamento do Prompt 12
+        rule.setAutoCreateIncident(Boolean.TRUE.equals(request.autoCreateIncident()));
         try {
-            rule = alertRuleRepository.saveAndFlush(
-                    new AlertRule(
-                            service,
-                            name,
-                            monitor,
-                            request.type(),
-                            request.operator(),
-                            request.thresholdNumeric(),
-                            request.thresholdStatus(),
-                            request.window(),
-                            request.severity()));
+            rule = alertRuleRepository.saveAndFlush(rule);
         }
         catch (DataIntegrityViolationException ex) {
             // corrida entre o existsBy acima e o insert: o unique vence → 409
@@ -221,7 +225,8 @@ public class AlertRuleService {
 
     /**
      * Atualização parcial de name/type/operator/thresholds/window/severity/
-     * monitorId. Campo ausente ({@code null}) não altera. A condição
+     * monitorId/autoCreateIncident. Campo ausente ({@code null}) não altera.
+     * A condição
      * EFETIVA (valores novos + persistidos) é revalidada pela matriz por
      * completo — mudar um campo invalida a combinação inteira de propósito.
      *
@@ -244,7 +249,11 @@ public class AlertRuleService {
      * {@code null}s redundantes.</p>
      *
      * <p>{@code active}, {@code id} e {@code serviceId} não existem no DTO:
-     * servidor-owned, e a ativação tem rota própria.</p>
+     * servidor-owned, e a ativação tem rota própria. {@code autoCreateIncident}
+     * (Prompt 15) EXISTE e é parcial como os outros: presente liga/desliga a
+     * automação dos próximos disparos; ausente (ou {@code null} explícito)
+     * não altera. Desligar nunca mexe em alerta/incidente já existente — o
+     * efeito é somente prospectivo.</p>
      */
     @Transactional
     public AlertRuleResponse update(
@@ -291,6 +300,12 @@ public class AlertRuleService {
         // monitorId: presente (valor) revalida ownership; null explícito limpa
         if (request.isMonitorIdSet()) {
             rule.setMonitor(findMonitorIfPresent(service, request.getMonitorId()));
+        }
+
+        // opt-in de automação (Prompt 15): presente liga/desliga; ausente
+        // não altera (Boolean wrapper — ver AlertRuleUpdateRequest)
+        if (request.getAutoCreateIncident() != null) {
+            rule.setAutoCreateIncident(request.getAutoCreateIncident());
         }
 
         try {

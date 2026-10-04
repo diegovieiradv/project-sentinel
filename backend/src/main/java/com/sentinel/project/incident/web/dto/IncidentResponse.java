@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.sentinel.organization.model.Role;
 import com.sentinel.project.alert.model.AlertSeverity;
 import com.sentinel.project.incident.model.Incident;
+import com.sentinel.project.incident.model.IncidentSource;
 import com.sentinel.project.incident.model.IncidentStatus;
 
 /**
@@ -16,7 +17,9 @@ import com.sentinel.project.incident.model.IncidentStatus;
  * {@code organizationId}/{@code projectId}/{@code serviceId} (cadeia inteira,
  * mesmo arranjo do {@code AlertResponse}), o conteúdo editável
  * ({@code title}/{@code description}/{@code severity}), o estado
- * ({@code status}, {@code startedAt}, {@code resolvedAt}), o audit de
+ * ({@code status}, {@code startedAt}, {@code resolvedAt}), a origem
+ * ({@code source}: {@code MANUAL} | {@code ALERT_AUTOMATION} — Prompt 15, é
+ * ela que diz "humano ou flag da regra"), o audit de
  * primeira linha ({@code createdByUserId}) e {@code createdAt}/
  * {@code updatedAt}/{@code version}.</p>
  *
@@ -42,6 +45,7 @@ public record IncidentResponse(
         String description,
         AlertSeverity severity,
         IncidentStatus status,
+        IncidentSource source,
         Instant startedAt,
         Instant resolvedAt,
         UUID createdByUserId,
@@ -60,6 +64,7 @@ public record IncidentResponse(
                 incident.getDescription(),
                 incident.getSeverity(),
                 incident.getStatus(),
+                incident.getSource(),
                 incident.getStartedAt(),
                 incident.getResolvedAt(),
                 incident.getCreatedByUserId(),

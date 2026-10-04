@@ -1,8 +1,8 @@
 # Alert Engine — Sentinel
 
-> **Prompt 13 de 18** — avaliação das regras de alerta e o resultado avaliado: o engine lê `alert_rules` + métricas a cada checagem do serviço, aplica a condição e mantém o ciclo de vida da entidade `Alert` (FIRING → RESOLVED), com a API somente-leitura correspondente e o painel de leitura no frontend. Este documento descreve **o que está construído**: tabela `alerts` (migration `V10`), o eixo `services.status_changed_at`, o pacote `com.sentinel.alerting` (engine, avaliador, lifecycle, gatilho), a extensão do pipeline do Prompt 10 (`MonitorExecutionTask` etapa 3), o sub-recurso `.../services/{serviceId}/alerts` (GET apenas) e o frontend `AlertsPanel`. As regras de CONFIGURAÇÃO são as do [alert-rules.md](alert-rules.md), o histórico de checagens e as fórmulas são os do [history-metrics.md](history-metrics.md), o status operacional é o do [operational-state.md](operational-state.md) e a base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
+> **Prompt 13 de 18** — avaliação das regras de alerta e o resultado avaliado: o engine lê `alert_rules` + métricas a cada checagem do serviço, aplica a condição e mantém o ciclo de vida da entidade `Alert` (FIRING → RESOLVED), com a API somente-leitura correspondente e o painel de leitura no frontend. Este documento descreve **o que está construído**: tabela `alerts` (migration `V10`; o índice parcial de reconciliação `idx_alerts_auto_create_firing` veio na `V12`), o eixo `services.status_changed_at`, o pacote `com.sentinel.alerting` (engine, avaliador, lifecycle, gatilho), a extensão do pipeline do Prompt 10 (`MonitorExecutionTask` etapa 3), o sub-recurso `.../services/{serviceId}/alerts` (GET apenas) e o frontend `AlertsPanel`. As regras de CONFIGURAÇÃO são as do [alert-rules.md](alert-rules.md), o histórico de checagens e as fórmulas são os do [history-metrics.md](history-metrics.md), o status operacional é o do [operational-state.md](operational-state.md) e a base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
 
-**Uma `Alert` é o RESULTADO avaliado de uma `AlertRule`**: nasce quando a condição estoura (disparo) e morre quando a condição normaliza ou um pai é desligado (resolução). Notificações, ack, silenciamento e escalonamento **não existem** (Prompt 15+); o incidente existe desde o **Prompt 14**, mas é sempre **aberto por um humano** — ver [incidents.md](incidents.md).
+**Uma `Alert` é o RESULTADO avaliado de uma `AlertRule`**: nasce quando a condição estoura (disparo) e morre quando a condição normaliza ou um pai é desligado (resolução). Notificações, ack, silenciamento e escalonamento **não existem** (Prompt 16+); o incidente existe desde o **Prompt 14** (ciclo manual — ver [incidents.md](incidents.md)) e desde o **Prompt 15** pode nascer **automaticamente** quando a regra tem a flag `autoCreateIncident` — sem o engine conhecer o pacote `incident` (evento neutro + hook, ver [alert-incident-automation.md](alert-incident-automation.md)).
 
 ## 1. Escopo implementado
 
@@ -19,8 +19,9 @@
 | Isolamento por regra, por monitor e por etapa do pipeline (nenhuma falha aborta o resto) | Construído |
 | `GET .../services/{serviceId}/alerts` + `GET .../alerts/{alertId}` (página/filtros/detalhe, somente leitura, `405` nos verbos de escrita) | Construído |
 | Frontend: cliente + helpers (`lib/alerts.ts`) + `AlertsPanel` (listagem, filtros, paginação, somente leitura) | Construído |
-| Notificações, ack, silenciamento, escalonamento, IA, `POST`/`PATCH`/`DELETE` de alerta | **Fora do escopo** (Prompt 15+) |
+| Notificações, ack, silenciamento, escalonamento, IA, `POST`/`PATCH`/`DELETE` de alerta | **Fora do escopo** (Prompt 16+) |
 | Vínculo com incidente e ciclo de vida manual do incidente | **Fora do escopo** do Prompt 13 — **construído no Prompt 14** (ver [incidents.md](incidents.md)) |
+| Evento de nascimento `AlertFiredEvent` + hook `AlertPostEvaluationHook` no fim do ciclo (interfaces neutras consumidas pela automação) | **Fora do escopo** do Prompt 13 — **construído no Prompt 15** (ver [alert-incident-automation.md](alert-incident-automation.md)) |
 
 ### 1.1 Nota sobre a numeração de critérios (melhor esforço)
 
@@ -33,6 +34,7 @@ A lista oficial de critérios do Prompt 13 **não está versionada neste reposit
 - **Janela meia-aberta**: a avaliação recorta `agora − window.seconds` (incluso) até `agora` (excluso), SEM alinhamento à grade de buckets do Prompt 11 (a grade é formato da resposta HTTP, não semântica de avaliação). Consequência prática: o check gravado na própria execução está na borda e só conta no ciclo seguinte.
 - **NO_DATA nunca resolve**: sem relevante na janela (ou sem eixo temporal, no `SERVICE_STATUS`) o veredito é `NO_DATA` — não dispara e **não encerra** o que está aberto. `ERROR` (falha de infra do avaliador) idem, e também nunca cria alerta.
 - **Sem cascata**: desativar a regra resolve o alerta aberto (`RULE_DEACTIVATED`); desativar serviço/projeto resolve em massa (`PARENT_INACTIVE`) — os ganchos ficam nas rotas de `.../activation` do [alert-rules.md](alert-rules.md) e do [services.md](services.md), com rede de segurança no próprio ciclo do engine.
+- **Reação ao resultado (Prompt 15)**: o ramo que **CRIA** um alerta publica `AlertFiredEvent` (só ids) dentro da própria transação — o consumidor roda no `AFTER_COMMIT`, depois do alerta commitado (o toque/deduplicação não publica); ao **FIM** do caminho normal, o engine notifica o `AlertPostEvaluationHook` dentro de `try/catch` (a reconciliação da automação varre os elegíveis do serviço; nos atalhos — serviço sumido/inativo — não há avaliação e portanto não há hook). Nenhum dos dois conhece `Incident`: quem reage mora em `com.sentinel.project.alert.automation` (ver [alert-incident-automation.md](alert-incident-automation.md)) e qualquer falha é logada sem derrubar o ciclo.
 
 ```mermaid
 graph LR
@@ -46,7 +48,9 @@ graph LR
     EVAL -->|condition true| FIRING["Alert FIRING<br/>abre ou toca — 1 por regra"]
     EVAL -->|condition false| RESOLVED["Alert RESOLVED AUTO<br/>só se houver aberto"]
     EVAL -->|NO_DATA| PRESERVE["preserve:<br/>não dispara e não resolve"]
-    FIRING -. "nunca cria automaticamente" .- INCIDENT["Incident (manual)<br/>✅ P14 — só por humano"]
+    FIRING -. "nascimento: AlertFiredEvent<br/>(AFTER_COMMIT)" .-> AUTO["automation opt-in<br/>✅ P15 — só com flag da regra"]
+    ENGINE -. "fim do caminho normal:<br/>hook em try/catch" .-> AUTO
+    AUTO --> INCIDENT["Incident source=ALERT_AUTOMATION<br/>✅ P15 — fora deste pacote"]
 ```
 
 ## 3. Modelo de dados
@@ -217,7 +221,7 @@ Observações de implementação:
   - unitários de domínio/evaluator (43): `AlertModelTest` (9), `AlertEvaluationResultTest` (5), `AvailabilityRuleEvaluatorTest` (6), `SuccessRateRuleEvaluatorTest` (4), `AverageLatencyRuleEvaluatorTest` (6), `TargetFailureCountRuleEvaluatorTest` (5), `ServiceStatusRuleEvaluatorTest` (8);
   - integração de ciclo (33): `AlertFiringTest` (6), `AlertDedupTest` (5), `AlertRecoveryTest` (6), `AlertNoDataTest` (3), `AlertRuleActiveTest` (4), `AlertParentInactiveTest` (4), `AlertFailureIsolationTest` (5);
   - contrato/infraestrutura: `AlertApiTest` (13), `AlertMigrationTest` (6), `AlertEngineE2ETest` (8);
-  - `MonitoringEngineBoundaryTest` atualizado para o P13: entidade `Alert` única e mapeada em `alerts`/`V10`, engine único em `com.sentinel.alerting`, pacote `alert` sem `Engine`/`Scheduler`/`Firing` — e, à época, o bloqueio do **Prompt 14** (Incident/IncidentEvent/notificações) permanecia. O estado **atual** do teste (incidente construído no P14, notificações ainda bloqueadas) está no [incidents.md](incidents.md) §12.
+  - `MonitoringEngineBoundaryTest` atualizado para o P13: entidade `Alert` única e mapeada em `alerts`/`V10`, engine único em `com.sentinel.alerting`, pacote `alert` sem `Engine`/`Scheduler`/`Firing` — e, à época, o bloqueio do **Prompt 14** (Incident/IncidentEvent/notificações) permanecia. O estado **atual** do teste (incidente construído no P14, automação opt-in no P15, notificações ainda bloqueadas) está no [incidents.md](incidents.md) §12 e no [alert-incident-automation.md](alert-incident-automation.md) §9.
 - **Frontend**: **137 testes** (baseline 126 + 11 em `alerts.test.ts`), `tsc --noEmit`, `eslint` e `next build` exit 0.
 - **E2E de pipeline** (`AlertEngineE2ETest`): tick → HTTP REAL em servidor local do JDK → gravação → estado → alerta, com relógio MUTÁVEL (avança entre ticks), `MonitorTargetValidator` permissivo `@Primary` e monitor criado pelo repositório — os dois invariantes de tempo (janela meia-aberta e `DueTracker`) ficam documentados na classe.
 
@@ -250,8 +254,8 @@ Observações de implementação:
 
 **NENHUMA** destas coisas foi construída **neste** prompt (a lista abaixo é o recorte do P13):
 
-- entidades `Incident*`/`IncidentEvent*` ou criação automática de incidente a partir de alerta — **o ciclo manual entrou no Prompt 14** ([incidents.md](incidents.md)); a **automação** continua fora e agora é travada por `alertingPackageHasNoIncidentReferences`;
-- notificações (e-mail, Slack, webhook), templates e envio — **ainda fora** (Prompt 15+);
+- entidades `Incident*`/`IncidentEvent*` ou criação automática de incidente a partir de alerta — **o ciclo manual entrou no Prompt 14** ([incidents.md](incidents.md)) e a **automação opt-in entrou no Prompt 15** ([alert-incident-automation.md](alert-incident-automation.md)); neste pacote a fronteira continua travada por `alertingPackageHasNoIncidentReferences` — o engine só conhece o evento neutro `AlertFiredEvent` e a interface `AlertPostEvaluationHook`;
+- notificações (e-mail, Slack, webhook), templates e envio — **ainda fora** (Prompt 16+);
 - acknowledge, escalonamento, silenciamento/supressão de alertas — **ainda fora**;
 - qualquer `POST`/`PATCH`/`DELETE` **na coleção de alertas** (`405` é contrato; o vínculo de incidente é gravado pela rota do incidente, que escreve apenas `alerts.incident_id`);
 - scheduler de avaliação próprio (o tick é do monitoring) e IA.

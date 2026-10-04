@@ -40,8 +40,12 @@ import jakarta.persistence.Table;
  *
  * <p><b>{@code actorUserId} nullable</b> e apagado em cascata suave
  * ({@code ON DELETE SET NULL}): o evento permanece mesmo que a conta de quem
- * o causou saia do sistema. Hoje sempre preenchido (toda mutação exige
- * usuário autenticado), mas a coluna não é NOT NULL de propósito.</p>
+ * o causou saia do sistema. O caminho manual preenche sempre (toda mutação
+ * exige usuário autenticado); desde o Prompt 15 a automação Alert →
+ * Incident grava {@code null} de propósito — os eventos
+ * {@code CREATED}/{@code ALERT_LINKED} de um incidente automático não têm
+ * pessoa por trás (o campo não era NOT NULL "de propósito" e a V12 tirou o
+ * NOT NULL do {@code incidents.created_by_user_id} pelo mesmo motivo).</p>
  */
 @Entity
 @Table(name = "incident_events")

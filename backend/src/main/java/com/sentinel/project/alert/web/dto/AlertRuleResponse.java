@@ -18,9 +18,11 @@ import com.sentinel.project.model.ServiceStatus;
  * <p><b>Só configuração, nunca resultado:</b> o payload tem identidade,
  * escopo ({@code organizationId}/{@code projectId}/{@code serviceId} +
  * {@code monitorId} opcional), a condição (type/operator/thresholds/window),
- * severidade e {@code active}. Não existe campo de "última avaliação",
- * "disparado em" ou estado de alerta — nenhum resultado existe neste prompt
- * (a avaliação é do Alert Engine, Prompt 13).</p>
+ * severidade, {@code active} e a flag {@code autoCreateIncident} (Prompt 15 —
+ * opt-in de automação, também configuração). Não existe campo de "última
+ * avaliação", "disparado em" ou estado de alerta/incidente — nenhum resultado
+ * existe neste payload (a avaliação é do Alert Engine, Prompt 13; o
+ * incidente nasce no serviço deles, nunca como coluna da regra).</p>
  *
  * <p><b>{@code monitorId}</b> {@code null} = Service-level (métrica agregada
  * do serviço); com valor = Monitor-level (avalia a métrica daquele monitor do
@@ -48,6 +50,7 @@ public record AlertRuleResponse(
         EvaluationWindow window,
         AlertSeverity severity,
         boolean active,
+        boolean autoCreateIncident,
         Instant createdAt,
         Instant updatedAt,
         Role role) {
@@ -67,6 +70,7 @@ public record AlertRuleResponse(
                 rule.getWindow(),
                 rule.getSeverity(),
                 rule.isActive(),
+                rule.isAutoCreateIncident(),
                 rule.getCreatedAt(),
                 rule.getUpdatedAt(),
                 role);

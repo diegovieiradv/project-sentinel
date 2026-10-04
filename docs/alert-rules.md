@@ -1,6 +1,6 @@
 # Alert Rules — Sentinel
 
-> **Prompt 12 de 18** — configuração, thresholds e gerenciamento das condições de alerta: quinto nível da hierarquia Organization → Project → Service → AlertRule, com escopo opcional de Monitor. Este documento descreve **o que está construído**: tabela `alert_rules` (migration `V9`), pacote `com.sentinel.project.alert` (entidade, repositório, matriz de validação, service, DTOs e controller), a semântica de `PATCH`, paginação/filtros/ordenação, unicidade de nome **por serviço** em duas camadas, ativação/desativação idempotente e a matriz de autorização sobre o contexto de tenant já resolvido. O contexto de tenant (membership, papéis e `404` anti-enumeração) é o do [organizations.md](organizations.md), os projetos são os do [projects.md](projects.md), os serviços são os do [services.md](services.md), os monitores são os do [monitors.md](monitors.md) e a base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
+> **Prompt 12 de 18** — configuração, thresholds e gerenciamento das condições de alerta: quinto nível da hierarquia Organization → Project → Service → AlertRule, com escopo opcional de Monitor. Este documento descreve **o que está construído**: tabela `alert_rules` (migration `V9` + flag `auto_create_incident` da `V12`, ver [alert-incident-automation.md](alert-incident-automation.md)), pacote `com.sentinel.project.alert` (entidade, repositório, matriz de validação, service, DTOs e controller), a semântica de `PATCH`, paginação/filtros/ordenação, unicidade de nome **por serviço** em duas camadas, ativação/desativação idempotente e a matriz de autorização sobre o contexto de tenant já resolvido. O contexto de tenant (membership, papéis e `404` anti-enumeração) é o do [organizations.md](organizations.md), os projetos são os do [projects.md](projects.md), os serviços são os do [services.md](services.md), os monitores são os do [monitors.md](monitors.md) e a base de autenticação (Bearer + CSRF) é a do [identity.md](identity.md).
 
 **Uma AlertRule representa uma condição configurada pelo usuário que será avaliada futuramente pelo Alert Engine (Prompt 13).** Neste prompt nada é avaliado, disparado ou notificado — só se cria, consulta, edita e ativa/desativa **configuração**.
 
@@ -25,6 +25,7 @@
 | Frontend de gerenciamento (`AlertRulesPanel` no detalhe do serviço + helpers em `src/lib/alert-rules.ts`) | Construído |
 | `DELETE`/`PUT` da rota → `405` (remoção não existe neste prompt) | Construído |
 | **Avaliação** das regras, disparo (`firing`), entidade `Alert`, scheduler de regras, notificações, incidentes e supressões | **Fora do escopo** (Prompt 13+) |
+| Flag `autoCreateIncident` (opt-in de automação Alert → Incident) | **Fora do escopo do Prompt 12** — **construída no Prompt 15** (ver [alert-incident-automation.md](alert-incident-automation.md)) |
 
 ## 2. Conceito e ownership
 
@@ -51,6 +52,7 @@
 | `"window"` | `VARCHAR(30) NOT NULL` | `CHECK` espelha o enum `EvaluationWindow` (5 valores); **palavra reservada do PostgreSQL** → citada com aspas no DDL (nome lógico/JSON continua `window`) |
 | `severity` | `VARCHAR(10) NOT NULL` | `CHECK` espelha o enum `AlertSeverity` (`SEV1`..`SEV4`) |
 | `active` | `BOOLEAN NOT NULL DEFAULT true` | toda regra nasce ativa; a desativação é soft-delete via `.../activation` |
+| `auto_create_incident` | `BOOLEAN NOT NULL DEFAULT FALSE` | **V12, Prompt 15** — opt-in de automação: com `true`, o nascimento de um alerta desta regra cria incidente `ALERT_AUTOMATION`; `false` = comportamento exato dos Prompts 12/13. Configuração **editável** (create/PATCH), efeito **prospectivo** (não mexe em alerta/incidente existente) |
 | `created_at` / `updated_at` | `TIMESTAMPTZ NOT NULL` | `updated_at` mantido por `@PreUpdate` (sem trigger) — ao contrário do append-only do `V8`, esta é configuração **editável** |
 
 Constraints e índices:
@@ -58,7 +60,7 @@ Constraints e índices:
 - **`UNIQUE (service_id, name_normalized)`** (`alert_rules_service_name_normalized_unique`): o mesmo nome normalizado não existe **duas vezes no mesmo serviço** — ativo **ou** inativo (desativar não libera o nome). Serviços diferentes (e portanto projetos/organizações diferentes) repetem o nome livremente.
 - **Checks de threshold mutuamente exclusivos**: `threshold_numeric` só coexiste com os tipos numéricos (com as faixas de cada um) e `threshold_status` só com `SERVICE_STATUS` — nunca os dois juntos.
 - **Índices**: `idx_alert_rules_monitor_id` (lookup por monitor), `idx_alert_rules_active` (elegibilidade futura do Engine) e `idx_alert_rules_service_id` implícito pelo prefixo do `UNIQUE (service_id, ...)`.
-- **Nenhuma coluna de resultado**: última avaliação, disparo, estado, incidente ou notificação **não são persistidos** por este prompt (§12).
+- **Nenhuma coluna de resultado**: última avaliação, disparo, estado, incidente ou notificação **não são persistidos** por este prompt (§12). A coluna `auto_create_incident` (§3.1) é **configuração** (Prompt 15), não resultado.
 
 ### 3.2 Normalização do nome
 
@@ -121,7 +123,7 @@ Base: `/api/v1/organizations/{organizationId}/projects/{projectId}/services/{ser
 
 ### 6.2 `POST .../alert-rules` → `201`
 
-Body: `{name, type, operator, thresholdNumeric?, thresholdStatus?, window, severity, monitorId?}` — o DTO **não tem campos de escopo** (`serviceId`, `active`, timestamps são servidor-owned; enviado no JSON são ignorados). Regra nasce `active=true`. A condição é validada pela matriz **antes** de qualquer escrita; o escopo de monitor (quando presente) é provado por último.
+Body: `{name, type, operator, thresholdNumeric?, thresholdStatus?, window, severity, monitorId?, autoCreateIncident?}` — o DTO **não tem campos de escopo** (`serviceId`, `active`, timestamps são servidor-owned; enviado no JSON são ignorados). Regra nasce `active=true`. `autoCreateIncident` (Prompt 15) é opcional: ausente/`null` → `false` (comportamento dos Prompts 12/13), `true` liga a automação dos próximos disparos; tipo errado → `400 VALIDATION_ERROR`. A condição é validada pela matriz **antes** de qualquer escrita; o escopo de monitor (quando presente) é provado por último.
 
 ### 6.3 `GET .../alert-rules` → `200`
 
@@ -140,9 +142,10 @@ Detalhe + `role` do usuário; `ruleId` malformado ou de outro tenant/serviço �
 
 ### 6.5 `PATCH .../alert-rules/{ruleId}` → `200`
 
-Body parcial: `{name?, type?, operator?, thresholdNumeric?, thresholdStatus?, window?, severity?, monitorId?}`.
+Body parcial: `{name?, type?, operator?, thresholdNumeric?, thresholdStatus?, window?, severity?, monitorId?, autoCreateIncident?}`.
 
 - **Campo ausente não altera**; `monitorId: null` **explícito** limpa o escopo (vira Service-level); presente → revalida ownership.
+- **`autoCreateIncident` (Prompt 15)**: ausente ou `null` explícito **não altera**; presente liga/desliga a automação dos **próximos** disparos — desligar **nunca** desfaz alerta/incidente já existente (efeito prospectivo, ver [alert-incident-automation.md](alert-incident-automation.md)).
 - A condição **efetiva** (novos + persistidos) é revalidada por inteiro pela matriz — mudar um campo invalida a combinação inteira de propósito.
 - **Resolução dos thresholds ao mudar de tipo**: `thresholdNumeric` presente → usado; ausente → herdado, **exceto** quando o tipo efetivo virou `SERVICE_STATUS` (aí vira `NULL`); `thresholdStatus` simétrico. Assim `{type: SERVICE_STATUS, thresholdStatus: UNAVAILABLE}` converte uma regra numérica limpando o número automaticamente (e o inverso), sem o cliente mandar `null`s redundantes.
 - Unicidade checada **depois** do payload (renomear não pode colidir consigo mesmo) e absorvida pelo `UNIQUE` na corrida.
@@ -198,9 +201,9 @@ Bearer `Authorization: Bearer <accessToken>` em todas as rotas; CSRF double-subm
 
 ## 10. Frontend (Prompt 12)
 
-- **Cliente**: seção Alert Rules em `frontend/src/lib/api.ts` — tipos (`AlertRuleType`, `AlertOperator`, `EvaluationWindow`, `AlertSeverity`, `AlertRuleResponse/CreateRequest/UpdateRequest/ActivationRequest/ListParams/Page`), `buildAlertRuleListParams` (ordem de query string estável) e `listAlertRules`/`getAlertRule`/`createAlertRule`/`updateAlertRule`/`activateAlertRule` (PATCHs montam body só com campos definidos).
-- **Helpers puros** (`frontend/src/lib/alert-rules.ts`): `ALLOWED_OPERATORS`/`allowedOperatorsFor` (espelho da matriz do backend), rótulos (`TYPE_LABELS`, `OPERATOR_LABELS`, `SEVERITY_LABELS`, `WINDOW_LABELS`), `thresholdFieldFor` (kind percent/ms/count/status com unit, options e placeholder), `validateAlertRuleForm`, `buildCreateAlertRuleRequest`/`buildUpdateAlertRuleRequest`, `formValuesFromRule`, `withTypeChange` (troca de tipo revalida a combinação inteira), `canManageAlertRules` e `alertRulesViewState(status, ruleCount)` → `loading|error|empty|list` — a decisão ÚNICA de o que renderizar na listagem (critérios 99–102), consumida pelo painel.
-- **Painel** (`frontend/src/components/AlertRulesPanel.tsx`): listagem com filtros (nome com debounce, tipo, severidade, escopo), paginação, criação, edição inline, toggle de ativação, `ThresholdInput` dinâmico por tipo, escopo exibido como badge (Service-level × Monitor do serviço), estados de vazio/carregando/erro com Retry derivados de `alertRulesViewState` e gate de `VIEWER` (oculta o form). Montado no detalhe expandido do serviço (`ServicesPanel.tsx`) com `key={alert-rules-${service.id}}` — estado nasce limpo por serviço.
+- **Cliente**: seção Alert Rules em `frontend/src/lib/api.ts` — tipos (`AlertRuleType`, `AlertOperator`, `EvaluationWindow`, `AlertSeverity`, `AlertRuleResponse/CreateRequest/UpdateRequest/ActivationRequest/ListParams/Page`, com `autoCreateIncident` nos tipos de regra desde o Prompt 15) e `buildAlertRuleListParams` (ordem de query string estável) e `listAlertRules`/`getAlertRule`/`createAlertRule`/`updateAlertRule`/`activateAlertRule` (PATCHs montam body só com campos definidos).
+- **Helpers puros** (`frontend/src/lib/alert-rules.ts`): `ALLOWED_OPERATORS`/`allowedOperatorsFor` (espelho da matriz do backend), rótulos (`TYPE_LABELS`, `OPERATOR_LABELS`, `SEVERITY_LABELS`, `WINDOW_LABELS`, `AUTO_CREATE_INCIDENT_LABEL`/`AUTO_CREATE_INCIDENT_HINT` desde o Prompt 15), `thresholdFieldFor` (kind percent/ms/count/status com unit, options e placeholder), `validateAlertRuleForm`, `buildCreateAlertRuleRequest`/`buildUpdateAlertRuleRequest` (levam a flag `autoCreateIncident` do form — o form nasce `false`), `formValuesFromRule` (devolve a flag persistida), `withTypeChange` (troca de tipo revalida a combinação inteira), `canManageAlertRules` e `alertRulesViewState(status, ruleCount)` → `loading|error|empty|list` — a decisão Única de o que renderizar na listagem (critérios 99–102), consumida pelo painel.
+- **Painel** (`frontend/src/components/AlertRulesPanel.tsx`): listagem com filtros (nome com debounce, tipo, severidade, escopo), paginação, criação, edição inline, toggle de ativação, `ThresholdInput` dinâmico por tipo, **checkbox `autoCreateIncident`** nos forms de criação e edição (Prompt 15, gate de `VIEWER` inalterado), escopo exibido como badge (Service-level × Monitor do serviço), estados de vazio/carregando/erro com Retry derivados de `alertRulesViewState` e gate de `VIEWER` (oculta o form). Montado no detalhe expandido do serviço (`ServicesPanel.tsx`) com `key={alert-rules-${service.id}}` — estado nasce limpo por serviço.
 
 ## 11. Estrutura de código (backend)
 
@@ -264,7 +267,7 @@ Cada critério tem **ao menos um teste executável cujo nome cita o número** (b
 - entidade **`Alert`**, disparo (`firing`), supressão/silenciamento/escalation/acknowledgment;
 - scheduler de Alert Rules ou qualquer leitura de métrica para decidir condição;
 - notificações (e-mail, Slack, webhook) e templates;
-- entidades `Incident*`/`IncidentEvent*` ou criação automática de incidente;
+- entidades `Incident*`/`IncidentEvent*` ou criação automática de incidente — **a flag `auto_create_incident` entrou no Prompt 15** ([alert-incident-automation.md](alert-incident-automation.md)), mas a decisão de criar continua fora destas classes (aqui só se guarda configuração);
 - tracing/OpenTelemetry e IA.
 
 O que **é** permitido (e foi feito): CRUD de `AlertRule`, validação de domínio, RBAC + IDOR + pais inativos, frontend de gerenciamento, migration `V9` e documentação. O `AlertRule` guarda **configuração**; a decisão de "estourou ou não" e tudo que vem depois é o **Prompt 13**.

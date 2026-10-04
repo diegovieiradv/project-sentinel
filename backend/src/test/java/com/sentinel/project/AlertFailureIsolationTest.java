@@ -142,7 +142,7 @@ class AlertFailureIsolationTest extends AbstractAlertEngineIntegrationTest {
     @Test
     void criterio82_gatilho_de_producao_nunca_propaga_excecao() {
         // (a) motor explodindo (stand-in da falha de banco/transação)
-        AlertEngine exploding = new AlertEngine(null, null, null, null, null, null) {
+        AlertEngine exploding = new AlertEngine(null, null, null, null, null, null, null) {
             @Override
             public void evaluateService(UUID serviceId) {
                 throw new IllegalStateException("engine down (test)");

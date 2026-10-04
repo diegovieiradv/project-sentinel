@@ -31,7 +31,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * Migração V10 do Prompt 13 (critérios 97–102) — catálogo Flyway completo,
  * identidade byte das V1..V9 e estrutura da tabela {@code alerts}.
  *
- * <p>Catálogo limitado a V1..V10 (nenhuma migration além da do prompt);
+ * <p>Catálogo limitado a V1..V12 (nenhuma migration além das dos Prompts
+ * 13, 14 e 15 — a V12 é a aditiva de automação Alert → Incident);
  * V1..V9 precisam estar <b>byte-idênticas</b> ao baseline do repositório
  * (SHA-256 fixado aqui — qualquer toque destrói o checksum do Flyway); e a
  * V10 precisa trazer as FKs {@code ON DELETE RESTRICT}, os CHECKs do ciclo de
@@ -79,7 +80,7 @@ class AlertMigrationTest {
     @Autowired
     private DataSource dataSource;
 
-    // --- 97: catálogo V1..V10 ------------------------------------------------
+    // --- 97: catálogo V1..V12 ------------------------------------------------
 
     @Test
     void criterio97_catalogo_v1_a_v10_completo_e_nada_alem() throws IOException {
@@ -94,9 +95,9 @@ class AlertMigrationTest {
                 .sorted()
                 .toList();
         assertThat(versions)
-                .as("catálogo termina na V11 (V1..V9 originais + V10 do prompt"
-                        + " + V11 do Prompt 14)")
-                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
+                .as("catálogo termina na V12 (V1..V9 originais + V10 do prompt"
+                        + " + V11 do Prompt 14 + V12 do Prompt 15)")
+                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
     }
 
     // --- 98: V1..V9 byte-idênticas ------------------------------------------
@@ -223,10 +224,10 @@ class AlertMigrationTest {
         List<Map<String, Object>> rows = new JdbcTemplate(dataSource).queryForList(
                 "SELECT version, success FROM flyway_schema_history ORDER BY installed_rank");
 
-        assertThat(rows).hasSize(11);
+        assertThat(rows).hasSize(12);
         assertThat(rows)
                 .extracting(row -> String.valueOf(row.get("version")))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
         assertThat(rows)
                 .as("nenhuma migration falhou (Hibernate ddl-auto=validate no mesmo boot)")
                 .extracting(row -> row.get("success"))

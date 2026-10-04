@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.sentinel.monitoring.Clock;
+import com.sentinel.project.alert.automation.event.AlertFiredEvent;
 import com.sentinel.project.alert.model.Alert;
 import com.sentinel.project.alert.model.AlertResolutionReason;
 import com.sentinel.project.alert.model.AlertRule;
@@ -13,6 +14,7 @@ import com.sentinel.project.model.Service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,6 +59,16 @@ import org.springframework.transaction.annotation.Transactional;
  * O engine e o lifecycle compartilhar o relógio mantém {@code startedAt},
  * {@code resolvedAt} e {@code lastEvaluatedAt} coerentes sem repassar
  * instantes em cada chamada.</p>
+ *
+ * <p><b>Evento de nascimento neutro (Prompt 15):</b> o ramo que CRIA um
+ * alerta publica {@link AlertFiredEvent} (só ids — alerta + serviço) logo
+ * após o {@code saveAndFlush}. É o único acoplamento para fora: "nasceu um
+ * alerta", sem nomear quem queira reagir. Como a publicação acontece DENTRO
+ * desta transação ({@code REQUIRES_NEW}), o consumidor roda no
+ * {@code AFTER_COMMIT} — depois do alerta estar de fato commitado. O toque
+ * de alerta existente NÃO publica (virou alerta uma vez só), e o
+ * consumidor nunca consegue reverter nada daqui: falha dele é logada e o
+ * próximo ciclo decide.</p>
  */
 // Arranjo do conflito de nomes: entidade Service importada acima, estereótipo
 // do Spring com FQN aqui (mesmo padrão de AlertRuleService).
@@ -67,10 +79,15 @@ public class AlertLifecycleService {
 
     private final AlertRepository alertRepository;
     private final Clock clock;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
-    public AlertLifecycleService(AlertRepository alertRepository, Clock clock) {
+    public AlertLifecycleService(
+            AlertRepository alertRepository,
+            Clock clock,
+            ApplicationEventPublisher applicationEventPublisher) {
         this.alertRepository = alertRepository;
         this.clock = clock;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     // --- FIRING: dedup + criação --------------------------------------------
@@ -83,7 +100,9 @@ public class AlertLifecycleService {
      *
      * <p>Pode lançar {@code DataIntegrityViolationException} sob corrida —
      * quem trata é o engine (a transação desta chamada só escreve o alerta,
-     * então o rollback não afeta nada mais).</p>
+     * então o rollback não afeta nada mais). O ramo de criação publica
+     * {@link AlertFiredEvent} dentro desta transação (consumidor roda após
+     * o commit); o ramo de toque não publica nada.</p>
      *
      * @param service serviço dono (mesmo da regra, já resolvido no engine)
      * @param rule    regra ATIVA que disparou
@@ -104,6 +123,12 @@ public class AlertLifecycleService {
                             Alert alert = new Alert(
                                     service, rule, message(rule, result.detail()), result.value(), now);
                             alertRepository.saveAndFlush(alert);
+                            // nascimento publica; o toque (ramo acima) não —
+                            // "virou alerta" acontece uma vez só. O registro
+                            // do ouvinte amarra a ESTA transação, então o
+                            // consumidor roda após o commit do alerta.
+                            applicationEventPublisher.publishEvent(
+                                    new AlertFiredEvent(alert.getId(), service.getId()));
                             log.info("alert firing alertId={} ruleId={} serviceId={} severity={} value={}",
                                     alert.getId(), rule.getId(), service.getId(),
                                     alert.getSeverity(), result.value());

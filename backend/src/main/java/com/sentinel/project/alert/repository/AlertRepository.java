@@ -116,6 +116,42 @@ public interface AlertRepository extends JpaRepository<Alert, UUID> {
     List<UUID> findOpenRuleIds(
             @Param("serviceId") UUID serviceId, @Param("status") AlertStatus status);
 
+    // --- automação Alert → Incident (Prompt 15) -----------------------------
+
+    /**
+     * Ids dos alertas <b>elegíveis</b> para a automação de UM serviço: aberto
+     * ({@code FIRING}), ainda sem incidente e cuja regra pediu
+     * {@code autoCreateIncident} — exatamente o que a reconciliação
+     * ({@code AlertAutomationReconciler}) precisa para "relembrar" um
+     * disparo que nasceu enquanto a flag estava desligada (ou que perdeu o
+     * evento por falha transitória).
+     *
+     * <p><b>Por que IDs e não entidades:</b> o reconciler não tem
+     * transação própria; ele devolve IDs e chama a automação UM alerta por
+     * vez, cada uma na SUA transação (isolamento por alerta — um alerta que
+     * falha não derruba os demais). A elegância completa (pais ativos,
+     * releitura da flag) é rechecada DENTRO dessa transação, nunca só aqui:
+     * esta query é pré-check barato, não autoridade.</p>
+     *
+     * <p><b>Por que é naturalmente limitada:</b> o engine garante no máximo
+     * UM alerta aberto por regra (deduplicação), então o resultado tem no
+     * máximo quantas regras opt-in o serviço tem — e na prática 0 ou 1.
+     * Ordenação fixa ({@code startedAt, id}) para o loop ser determinístico.</p>
+     *
+     * @param serviceId serviço avaliado (a chamada do hook carrega dele)
+     */
+    @Query("""
+            SELECT a.id
+            FROM Alert a
+            WHERE a.service.id = :serviceId
+              AND a.status = :status
+              AND a.incident IS NULL
+              AND a.alertRule.autoCreateIncident = true
+            ORDER BY a.startedAt ASC, a.id ASC
+            """)
+    List<UUID> findOpenEligibleForAutomation(
+            @Param("serviceId") UUID serviceId, @Param("status") AlertStatus status);
+
     // --- associação Incident ↔ Alert (Prompt 14) ----------------------------
 
     /**

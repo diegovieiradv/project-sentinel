@@ -20,13 +20,16 @@ import {
 } from "@/lib/api";
 import {
   INCIDENT_SEVERITY_OPTIONS,
+  INCIDENT_SOURCE_LABELS,
   INCIDENT_STATUS_LABELS,
   canTransition,
   formatIncidentInstant,
   hasIncidentContentChanges,
   incidentActorLabel,
+  incidentAuthorLabel,
   incidentEventLine,
   incidentSeverityBadgeClasses,
+  incidentSourceBadgeClasses,
   incidentStatusBadgeClasses,
   isResolved,
   nextStatusOptions,
@@ -402,6 +405,10 @@ export default function IncidentDetail({
           <span className={incidentSeverityBadgeClasses(incident.severity)}>
             {SEVERITY_LABELS[incident.severity]}
           </span>
+          {/* Origem (Prompt 15) — "humano ou flag da regra" */}
+          <span className={incidentSourceBadgeClasses(incident.source)}>
+            {INCIDENT_SOURCE_LABELS[incident.source]}
+          </span>
           <span>· Your role {incident.role}</span>
           <span>· v{incident.version}</span>
         </p>
@@ -418,7 +425,7 @@ export default function IncidentDetail({
         <p className="text-xs text-(--muted)">
           Created {formatIncidentInstant(incident.createdAt)} · Updated{" "}
           {formatIncidentInstant(incident.updatedAt)} · Reported by{" "}
-          {incident.createdByUserId}
+          {incidentAuthorLabel(incident)}
         </p>
       </div>
 

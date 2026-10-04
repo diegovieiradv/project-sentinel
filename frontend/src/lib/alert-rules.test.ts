@@ -69,6 +69,7 @@ const RULE: AlertRuleResponse = {
   window: "FIFTEEN_MINUTES",
   severity: "SEV1",
   active: true,
+  autoCreateIncident: false,
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-02T00:00:00Z",
   role: "ADMIN",
@@ -352,6 +353,7 @@ describe("builders de body", () => {
       window: "FIFTEEN_MINUTES",
       severity: "SEV2",
       thresholdNumeric: 99.9,
+      autoCreateIncident: false,
     });
     expect(body).not.toHaveProperty("monitorId");
     expect(body).not.toHaveProperty("thresholdStatus");
@@ -398,8 +400,22 @@ describe("builders de body", () => {
       severity: "SEV2",
       monitorId: MONITOR_ID,
       thresholdNumeric: 800,
+      autoCreateIncident: false,
     });
     expect(body).not.toHaveProperty("thresholdStatus");
+  });
+
+  it("flag de automação nasce false no form e o builder a leva adiante", () => {
+    expect(emptyAlertRuleForm().autoCreateIncident).toBe(false);
+
+    const on = {
+      ...emptyAlertRuleForm(),
+      name: "Availability below 99.9",
+      thresholdNumeric: "99.9",
+      autoCreateIncident: true,
+    };
+    expect(buildCreateAlertRuleRequest(on)?.autoCreateIncident).toBe(true);
+    expect(buildUpdateAlertRuleRequest(on)?.autoCreateIncident).toBe(true);
   });
 
   it("update voltando para Service-level manda monitorId: null (limpa de verdade)", () => {
@@ -414,6 +430,12 @@ describe("builders de body", () => {
     expect(form.thresholdStatus).toBe("");
     expect(form.monitorId).toBe("");
     expect(form.type).toBe("AVAILABILITY");
+    expect(form.autoCreateIncident).toBe(false);
+    // e a flag ligada da regra também é semeada (edição vira PATCH fiel)
+    expect(
+      formValuesFromRule({ ...RULE, autoCreateIncident: true })
+        .autoCreateIncident
+    ).toBe(true);
   });
 });
 
@@ -542,6 +564,20 @@ describe("createAlertRule", () => {
     expect(created.id).toBe(RULE_ID);
   });
 
+  it("autoCreateIncident informado vai ao body (ausente continua omitido)", async () => {
+    respondWith(201, RULE);
+    await createAlertRule(ORG_ID, PROJECT_ID, SERVICE_ID, {
+      name: "Auto rule",
+      type: "AVAILABILITY",
+      operator: "LESS_THAN",
+      thresholdNumeric: 99.9,
+      window: "FIFTEEN_MINUTES",
+      severity: "SEV1",
+      autoCreateIncident: true,
+    });
+    expect(bodyOf()).toHaveProperty("autoCreateIncident", true);
+  });
+
   it("409 ALERT_RULE_NAME_DUPLICATE expõe code e mensagem", async () => {
     respondWith(409, {
       code: "ALERT_RULE_NAME_DUPLICATE",
@@ -573,6 +609,14 @@ describe("updateAlertRule", () => {
       `${API_URL}/api/v1/organizations/${ORG_ID}/projects/${PROJECT_ID}/services/${SERVICE_ID}/alert-rules/${RULE_ID}`
     );
     expect(bodyOf()).toEqual({ name: "Renamed rule" });
+  });
+
+  it("PATCH leva autoCreateIncident quando informado (parcial de verdade)", async () => {
+    respondWith(200, RULE);
+    await updateAlertRule(ORG_ID, PROJECT_ID, SERVICE_ID, RULE_ID, {
+      autoCreateIncident: true,
+    });
+    expect(bodyOf()).toEqual({ autoCreateIncident: true });
   });
 });
 

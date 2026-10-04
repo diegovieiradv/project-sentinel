@@ -245,6 +245,8 @@ export interface AlertRuleFormValues {
   window: EvaluationWindow;
   severity: AlertSeverity;
   monitorId: string;
+  /** Automação de incidente (Prompt 15) — opt-in, o form nasce com `false`. */
+  autoCreateIncident: boolean;
 }
 
 const MAX_NAME_LENGTH = 120;
@@ -260,6 +262,7 @@ export function emptyAlertRuleForm(): AlertRuleFormValues {
     window: "FIFTEEN_MINUTES",
     severity: "SEV2",
     monitorId: "",
+    autoCreateIncident: false,
   };
 }
 
@@ -300,6 +303,7 @@ export function buildCreateAlertRuleRequest(
     operator: form.operator,
     window: form.window,
     severity: form.severity,
+    autoCreateIncident: form.autoCreateIncident,
   };
   if (form.monitorId !== "") request.monitorId = form.monitorId;
 
@@ -333,6 +337,7 @@ export function buildUpdateAlertRuleRequest(
     window: form.window,
     severity: form.severity,
     monitorId: form.monitorId === "" ? null : form.monitorId,
+    autoCreateIncident: form.autoCreateIncident,
   };
 
   if (form.type === "SERVICE_STATUS") {
@@ -357,6 +362,7 @@ export function formValuesFromRule(rule: AlertRuleResponse): AlertRuleFormValues
     window: rule.window,
     severity: rule.severity,
     monitorId: rule.monitorId ?? "",
+    autoCreateIncident: rule.autoCreateIncident,
   };
 }
 
@@ -384,6 +390,15 @@ export function withTypeChange(
 /* -------------------------------------------------------------------------- */
 /* Rótulos de apresentação                                                    */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Texto do checkbox de automação (Prompt 15) — uma fonte só para o rótulo e
+ * o auxílio, usados nos forms de criação e de edição. A flag é opt-in e muda
+ * por PATCH como qualquer outro campo de configuração.
+ */
+export const AUTO_CREATE_INCIDENT_LABEL = "Create incident automatically";
+export const AUTO_CREATE_INCIDENT_HINT =
+  "When this rule fires, open an incident with its severity and link the alert to it.";
 
 /**
  * Badge de escopo: `Service-level` (monitorId nulo) ou `Monitor: {nome}` —
