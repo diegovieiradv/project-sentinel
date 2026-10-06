@@ -4,6 +4,7 @@
 import { FormEvent, Fragment, useCallback, useEffect, useState } from "react";
 import HealthStatus from "@/components/HealthStatus";
 import AuthStatus, { type AuthStateKind } from "@/components/AuthStatus";
+import DashboardPanel from "@/components/DashboardPanel";
 import ServicesPanel from "@/components/ServicesPanel";
 import { handleUnauthorized, isUnauthorized, messageOf } from "@/lib/errors";
 import {
@@ -818,6 +819,16 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                               </p>
                             )}
                           </div>
+
+                          {/* Painel operacional do projeto (Prompt 16) —
+                              resposta ÚNICA read-only, monta/desmonta com o
+                              projeto (`key` próprio) e recarrega só na
+                              troca de faixa ou no Refresh manual. */}
+                          <DashboardPanel
+                            key={`dashboard-${project.id}`}
+                            organizationId={orgId}
+                            projectId={project.id}
+                          />
 
                           {/* Serviços do projeto expandido (Prompt 07) —
                               monta/desmonta com o projeto (`key={project.id}`). */}

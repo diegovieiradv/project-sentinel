@@ -348,4 +348,43 @@ public interface MonitorCheckRepository extends JpaRepository<MonitorCheck, UUID
             @Param("serviceId") UUID serviceId,
             @Param("windowFrom") Instant windowFrom,
             @Param("windowTo") Instant windowTo);
+
+    /**
+     * Resumo do PROJETO inteiro na janela (Prompt 16) — checks de todos os
+     * monitores de todos os serviços do projeto, sempre UMA linha.
+     *
+     * <p>Mesma estrutura do {@link #summaryByService}: agregação sem
+     * {@code GROUP BY} (contagens 0 e latência {@code null} em janela vazia),
+     * latência já filtrada no banco sobre SUCCESS/DEGRADED e o escopo é o
+     * projeto — a cadeia Organization → Project é provada pelo service, aqui
+     * só {@code projectId}.</p>
+     */
+    @Query(
+            value = """
+                    SELECT count(*) FILTER (WHERE c.outcome = 'SUCCESS') AS "successCount",
+                           count(*) FILTER (WHERE c.outcome = 'DEGRADED_SIGNAL') AS "degradedCount",
+                           count(*) FILTER (WHERE c.outcome = 'TARGET_FAILURE') AS "targetFailureCount",
+                           count(*) FILTER (WHERE c.outcome = 'SENTINEL_INTERNAL_FAILURE')
+                               AS "sentinelInternalFailureCount",
+                           avg(c.duration_millis)
+                               FILTER (WHERE c.outcome IN ('SUCCESS','DEGRADED_SIGNAL'))
+                               AS "avgDurationMillis",
+                           min(c.duration_millis)
+                               FILTER (WHERE c.outcome IN ('SUCCESS','DEGRADED_SIGNAL'))
+                               AS "minDurationMillis",
+                           max(c.duration_millis)
+                               FILTER (WHERE c.outcome IN ('SUCCESS','DEGRADED_SIGNAL'))
+                               AS "maxDurationMillis"
+                    FROM monitor_checks c
+                    JOIN monitors m ON m.id = c.monitor_id
+                    JOIN services s ON s.id = m.service_id
+                    WHERE s.project_id = :projectId
+                      AND c.started_at >= :windowFrom
+                      AND c.started_at < :windowTo
+                    """,
+            nativeQuery = true)
+    MetricsSummaryProjection summaryByProject(
+            @Param("projectId") UUID projectId,
+            @Param("windowFrom") Instant windowFrom,
+            @Param("windowTo") Instant windowTo);
 }

@@ -237,4 +237,62 @@ public interface AlertRepository extends JpaRepository<Alert, UUID> {
             WHERE a.incident.id = :incidentId
             """)
     Page<Alert> searchByIncidentId(@Param("incidentId") UUID incidentId, Pageable pageable);
+
+    // --- painel do projeto (Prompt 16) -------------------------------------
+
+    /**
+     * Alertas FIRING do projeto por severidade (GROUP BY) — alimenta os
+     * totais do painel SEM depender do recorte de exibição (as contagens são
+     * do conjunto inteiro; a lista de linhas é outra query).
+     *
+     * @param projectId projeto já provado dentro do tenant
+     */
+    @Query(
+            value = """
+                    SELECT a.severity AS "severity", count(*) AS "total"
+                    FROM alerts a
+                    JOIN services s ON s.id = a.service_id
+                    WHERE s.project_id = :projectId
+                      AND a.status = 'FIRING'
+                    GROUP BY a.severity
+                    """,
+            nativeQuery = true)
+    List<AlertSeverityCountProjection> countFiringBySeverityForProject(
+            @Param("projectId") UUID projectId);
+
+    /**
+     * Primeiros alertas FIRING do projeto para a lista do painel: severidade
+     * SEV1 → SEV4 e depois o mais recente, com desempate no id.
+     *
+     * <p>Serviço e regra entram no JOIN (a UI monta a linha sem N+1) e o
+     * {@code LIMIT} corta no banco — a janela de listagem nunca carrega o
+     * conjunto inteiro.</p>
+     *
+     * @param projectId projeto já provado dentro do tenant
+     * @param limit     máximo de linhas (10 no contrato do painel)
+     */
+    @Query(
+            value = """
+                    SELECT a.id AS "alertId",
+                           a.service_id AS "serviceId",
+                           s.name AS "serviceName",
+                           r.id AS "ruleId",
+                           r.name AS "ruleName",
+                           a.severity AS "severity",
+                           a.started_at AS "firedAt",
+                           a.incident_id AS "incidentId"
+                    FROM alerts a
+                    JOIN services s ON s.id = a.service_id
+                    JOIN alert_rules r ON r.id = a.alert_rule_id
+                    WHERE s.project_id = :projectId
+                      AND a.status = 'FIRING'
+                    ORDER BY CASE a.severity WHEN 'SEV1' THEN 1
+                                 WHEN 'SEV2' THEN 2
+                                 WHEN 'SEV3' THEN 3 ELSE 4 END,
+                             a.started_at DESC, a.id DESC
+                    LIMIT :limit
+                    """,
+            nativeQuery = true)
+    List<ActiveAlertRowProjection> findTopFiringForProject(
+            @Param("projectId") UUID projectId, @Param("limit") int limit);
 }

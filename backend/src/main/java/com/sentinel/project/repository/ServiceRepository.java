@@ -1,5 +1,6 @@
 package com.sentinel.project.repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -100,4 +101,111 @@ public interface ServiceRepository extends JpaRepository<Service, UUID> {
             ServiceStatus status,
             String nameNormalized,
             Pageable pageable);
+
+    // --- painel do projeto (Prompt 16) -------------------------------------
+
+    /**
+     * Saúde do projeto: serviços por status em UMA consulta (GROUP BY) — o
+     * painel nunca faz um select por serviço (N+1) e a soma das quatro
+     * contagens fecha com o total de serviços.
+     *
+     * <p>Conta TODOS os serviços do projeto (ativos e inativos): o painel é
+     * o retrato do catálogo, mesma leitura da métrica por serviço.</p>
+     *
+     * @param projectId projeto já provado dentro do tenant
+     */
+    @Query(
+            value = """
+                    SELECT s.status AS "status", count(*) AS "total"
+                    FROM services s
+                    WHERE s.project_id = :projectId
+                    GROUP BY s.status
+                    """,
+            nativeQuery = true)
+    List<ServiceStatusCountProjection> countStatusByProject(
+            @Param("projectId") UUID projectId);
+
+    /**
+     * Serviços que pedem atenção agora, resolvidos INTEIROS no banco
+     * (filtro + ordenação + {@code LIMIT}) — uma única consulta em vez de
+     * N EXISTS por serviço em Java.
+     *
+     * <p><b>Entra quem é UNAVAILABLE/DEGRADED OU tem alerta FIRING OU tem
+     * incidente ativo</b> (status sozinho já aciona; alerta/incidente acionam
+     * mesmo com o serviço OPERATIONAL/UNKNOWN).</p>
+     *
+     * <p><b>Ordenação aprovada:</b> estado (UNAVAILABLE → DEGRADED → demais)
+     * → maior severidade ativa (SEV1 → SEV4, sem severidade por último) →
+     * incidente ativo → nome → id. A severidade é combinada em SQL com
+     * {@code LEAST} sobre as duas subqueries (alerta mais grave × incidente
+     * mais grave), e o rank desconhecido vira 9 para nunca vencer SEV4.</p>
+     *
+     * @param projectId projeto já provado dentro do tenant
+     * @param limit     máximo de linhas (20 no contrato do painel)
+     */
+    @Query(
+            value = """
+                    SELECT * FROM (
+                        SELECT s.id AS "serviceId",
+                               s.name AS "serviceName",
+                               s.status AS "status",
+                               s.status_changed_at AS "statusChangedAt",
+                               (
+                                   SELECT a.severity
+                                   FROM alerts a
+                                   WHERE a.service_id = s.id AND a.status = 'FIRING'
+                                   ORDER BY CASE a.severity WHEN 'SEV1' THEN 1
+                                                 WHEN 'SEV2' THEN 2
+                                                 WHEN 'SEV3' THEN 3 ELSE 4 END,
+                                            a.started_at DESC, a.id DESC
+                                   LIMIT 1
+                               ) AS "highestAlertSeverity",
+                               (
+                                   SELECT i.severity
+                                   FROM incidents i
+                                   WHERE i.service_id = s.id AND i.status <> 'RESOLVED'
+                                   ORDER BY CASE i.severity WHEN 'SEV1' THEN 1
+                                                 WHEN 'SEV2' THEN 2
+                                                 WHEN 'SEV3' THEN 3 ELSE 4 END,
+                                            i.started_at DESC, i.id DESC
+                                   LIMIT 1
+                               ) AS "highestIncidentSeverity",
+                               EXISTS (
+                                   SELECT 1
+                                   FROM incidents i2
+                                   WHERE i2.service_id = s.id AND i2.status <> 'RESOLVED'
+                               ) AS "hasActiveIncident"
+                        FROM services s
+                        WHERE s.project_id = :projectId
+                          AND (
+                              s.status IN ('UNAVAILABLE', 'DEGRADED')
+                              OR EXISTS (
+                                  SELECT 1 FROM alerts a
+                                  WHERE a.service_id = s.id AND a.status = 'FIRING')
+                              OR EXISTS (
+                                  SELECT 1 FROM incidents i
+                                  WHERE i.service_id = s.id AND i.status <> 'RESOLVED')
+                          )
+                    ) t
+                    ORDER BY CASE t."status" WHEN 'UNAVAILABLE' THEN 1
+                                 WHEN 'DEGRADED' THEN 2 ELSE 3 END,
+                             LEAST(
+                                 CASE WHEN t."highestAlertSeverity" = 'SEV1' THEN 1
+                                      WHEN t."highestAlertSeverity" = 'SEV2' THEN 2
+                                      WHEN t."highestAlertSeverity" = 'SEV3' THEN 3
+                                      WHEN t."highestAlertSeverity" = 'SEV4' THEN 4
+                                      ELSE 9 END,
+                                 CASE WHEN t."highestIncidentSeverity" = 'SEV1' THEN 1
+                                      WHEN t."highestIncidentSeverity" = 'SEV2' THEN 2
+                                      WHEN t."highestIncidentSeverity" = 'SEV3' THEN 3
+                                      WHEN t."highestIncidentSeverity" = 'SEV4' THEN 4
+                                      ELSE 9 END),
+                             CASE WHEN t."hasActiveIncident" THEN 0 ELSE 1 END,
+                             t."serviceName" ASC,
+                             t."serviceId" ASC
+                    LIMIT :limit
+                    """,
+            nativeQuery = true)
+    List<ServiceAttentionProjection> findServicesNeedingAttention(
+            @Param("projectId") UUID projectId, @Param("limit") int limit);
 }

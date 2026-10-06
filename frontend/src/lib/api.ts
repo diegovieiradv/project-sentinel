@@ -2264,3 +2264,157 @@ export async function unlinkIncidentAlert(
     { method: "DELETE" }
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Dashboard do projeto (Prompt 16) — resposta ÚNICA de leitura composta      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Faixa temporal do painel — MESMO vocabulário de `MetricsRange`
+ * (`1h`, `6h`, `24h`, `7d`, `30d`). É alias intencional: o painel reusa a
+ * janela já canônica do Prompt 11 (e o builder de query) em vez de criar um
+ * segundo vocabulário de faixas que o backend teria que validar duas vezes.
+ */
+export type DashboardRange = MetricsRange;
+
+/** Saúde dos SERVIÇOS do projeto (inclui inativos — não é janela temporal). */
+export interface DashboardHealthSummary {
+  totalServices: number;
+  operational: number;
+  degraded: number;
+  unavailable: number;
+  unknown: number;
+}
+
+/**
+ * Disponibilidade da janela `[windowFrom, windowTo)` — fórmulas do Prompt 11
+ * agregadas sobre o projeto INTEIRO. Taxas vêm em `null` quando o
+ * denominador é zero (sem evidência, nunca `0`).
+ */
+export interface DashboardAvailabilitySummary {
+  availabilityPercent: number | null;
+  totalChecks: number;
+  relevantChecks: number;
+  successRatePercent: number | null;
+  avgLatencyMs: number | null;
+  minLatencyMs: number | null;
+  maxLatencyMs: number | null;
+}
+
+/** Um alerta FIRING — o único estado "aberto" de um alerta. */
+export interface DashboardActiveAlert {
+  alertId: string;
+  serviceId: string;
+  serviceName: string;
+  ruleId: string;
+  ruleName: string;
+  severity: AlertSeverity;
+  firedAt: string;
+  /** `null` enquanto o alerta não estiver vinculado a um incidente. */
+  incidentId: string | null;
+}
+
+/** Contagens de alertas em FIRING (total + por severidade) + top 10. */
+export interface DashboardAlertsSummary {
+  firingTotal: number;
+  sev1: number;
+  sev2: number;
+  sev3: number;
+  sev4: number;
+  activeAlerts: DashboardActiveAlert[];
+}
+
+/** Incidente ativo (`OPEN`/`INVESTIGATING`/`IDENTIFIED`) — top 10. */
+export interface DashboardActiveIncident {
+  incidentId: string;
+  serviceId: string;
+  serviceName: string;
+  title: string;
+  severity: AlertSeverity;
+  status: IncidentStatus;
+  source: IncidentSource;
+  startedAt: string;
+  associatedAlertsCount: number;
+}
+
+/** Contagens de incidentes ativos por status + top 10. */
+export interface DashboardIncidentsSummary {
+  activeTotal: number;
+  open: number;
+  investigating: number;
+  identified: number;
+  activeIncidents: DashboardActiveIncident[];
+}
+
+/** Tipos de linha da atividade recente (UNIÃO de alertas e incidentes). */
+export type DashboardActivityType =
+  | "ALERT_FIRED"
+  | "ALERT_RESOLVED"
+  | "INCIDENT_CREATED"
+  | "INCIDENT_STATUS_CHANGED"
+  | "INCIDENT_LINKED"
+  | "INCIDENT_RESOLVED";
+
+/** Recurso ao qual a linha de atividade aponta. */
+export type DashboardActivityResourceType = "ALERT" | "INCIDENT";
+
+/**
+ * Uma linha da atividade recente, ordenada por `timestamp` DESC e limitada
+ * no banco. `severity`/`title` são `null` só em linha defensiva — cada ramo
+ * da união os preenche.
+ */
+export interface DashboardActivityItem {
+  type: DashboardActivityType;
+  timestamp: string;
+  serviceId: string | null;
+  serviceName: string | null;
+  severity: AlertSeverity | null;
+  title: string | null;
+  resourceId: string | null;
+  resourceType: DashboardActivityResourceType | null;
+}
+
+/** Serviço que pede atenção agora (não-OPERATIONAL, ou alerta/incidente). */
+export interface DashboardServiceAttention {
+  serviceId: string;
+  serviceName: string;
+  status: ServiceStatus;
+  /** Maior severidade entre alerta FIRING e incidente ativo; `null` = nenhum. */
+  highestSeverity: AlertSeverity | null;
+  hasActiveIncident: boolean;
+  statusChangedAt: string | null;
+}
+
+/** Resposta ÚNICA do painel — 10 seções, cada uma composta de dados reais. */
+export interface DashboardResponse {
+  projectId: string;
+  rangeKey: DashboardRange;
+  windowFrom: string;
+  windowTo: string;
+  health: DashboardHealthSummary;
+  availability: DashboardAvailabilitySummary;
+  alerts: DashboardAlertsSummary;
+  incidents: DashboardIncidentsSummary;
+  servicesNeedingAttention: DashboardServiceAttention[];
+  recentActivity: DashboardActivityItem[];
+}
+
+/**
+ * GET `.../organizations/{organizationId}/projects/{projectId}/dashboard`
+ * → **200** resposta única do painel. Query `range` opcional (ausente →
+ * default `24h`; valor fora de `1h|6h|24h|7d|30d` → **400**
+ * `VALIDATION_ERROR`). **401** anônimo | **404** projeto/org inexistente ou
+ * de outro tenant (mesmo 404 genérico da cadeia).
+ *
+ * Leitura com qualquer papel (ADMIN/OPERATOR/VIEWER) — o tenant já é provado
+ * pelo path, que é a mesma autoridade das demais rotas `@TenantScoped`.
+ */
+export async function getDashboard(
+  organizationId: string,
+  projectId: string,
+  range?: DashboardRange
+): Promise<DashboardResponse> {
+  return apiFetch<DashboardResponse>(
+    `/api/v1/organizations/${organizationId}/projects/${projectId}/dashboard${buildMetricsRangeParams(range)}`
+  );
+}

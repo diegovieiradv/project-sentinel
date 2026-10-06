@@ -15,6 +15,7 @@ import com.sentinel.project.monitor.dto.MetricsBucket;
 import com.sentinel.project.monitor.dto.MetricsRange;
 import com.sentinel.project.monitor.dto.MetricsSummary;
 import com.sentinel.project.monitor.dto.MonitorMetricsResponse;
+import com.sentinel.project.monitor.dto.ProjectWindowSummary;
 import com.sentinel.project.monitor.dto.ServiceMetricsBreakdown;
 import com.sentinel.project.monitor.dto.ServiceMetricsResponse;
 import com.sentinel.project.monitor.model.Monitor;
@@ -166,6 +167,34 @@ public class MonitorMetricsService {
         return new ServiceMetricsResponse(
                 service.getId(), range.key(), window.from(), window.to(),
                 window.bucketSeconds(), summary, buckets, breakdown);
+    }
+
+    // --- resumo do PROJETO para o painel (Prompt 16) ------------------------
+
+    /**
+     * Janela alinhada + resumo de TODOS os checks do projeto — o recorte que
+     * o painel operacional publica em {@code windowFrom}/{@code windowTo}.
+     *
+     * <p><b>Por que aqui:</b> a aritmética da janela ({@code to} truncado no
+     * bucket e {@code from = to − range}) e as fórmulas do resumo moram no
+     * {@link Window} privado e no {@link #toSummary}. O painel chama este
+     * método para obter os dois com UMA fonte de verdade — reimplementar o
+     * {@code floor} em outro serviço criaria um segundo recorte possível de
+     * divergir do histórico.</p>
+     *
+     * <p>Sem cadeia de tenant aqui: quem prova Organization → Project é o
+     * {@code DashboardQueryService}, como nos demais endpoints de leitura.</p>
+     *
+     * @param projectId projeto dono dos checks
+     * @param range     faixa pedida ({@code null} já resolvido antes por
+     *                  {@code MetricsRange.fromKey})
+     */
+    @Transactional(readOnly = true)
+    public ProjectWindowSummary projectWindowSummary(UUID projectId, MetricsRange range) {
+        Window window = Window.of(clock, range);
+        MetricsSummary summary = toSummary(monitorCheckRepository.summaryByProject(
+                projectId, window.from(), window.to()));
+        return new ProjectWindowSummary(range.key(), window.from(), window.to(), summary);
     }
 
     // --- janela arbitrária para o Alert Engine (Prompt 13) ------------------
