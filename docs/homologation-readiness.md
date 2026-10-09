@@ -138,3 +138,56 @@ docker compose up -d                              # PostgreSQL 17 na 5433
 ## 8. Limite do documento
 
 Este texto **não** declara o sistema pronto para produção: a §4 existe justamente para que "862 testes verdes" não seja lido como "seguro para operar". As pendências da §4 são as que precisam de decisão de escopo antes de qualquer janela de produção, e o Prompt 18 é quem deve tratá-las — nada delas foi antecipado aqui.
+
+## 9. P18 — Homologação Final (execução real, 2026-10-09)
+
+> Registro do **Prompt 18**: homologação final executada de ponta a ponta contra infraestrutura **local real** (Docker `postgres:17` na porta **5433**, backend jar na porta **8080**, frontend dev na porta **3000**, `MONITORING_SCHEDULER_DELAY_MS=5000` para enxergar ticks). As seções §1–§8 acima permanecem como registro histórico do Prompt 17; nada nelas foi reescrito. Escopo documental: as mudanças desta entrega são documentos apenas ([production-checklist.md](production-checklist.md) novo, este registro e o ajuste de enum em [alert-rules.md](alert-rules.md)) — sem código, migrations, dependências ou configuração.
+
+### 9.1 Resultados da homologação
+
+| Área | Evidência executada | Resultado |
+| --- | --- | --- |
+| Baseline backend | `mvn clean test` | **865/0/0/0** (85 relatórios Surefire), BUILD SUCCESS — inalterado em relação ao baseline do P17 pós-#73 |
+| Baseline frontend | `npm run test` / `lint` / `type-check` / `build` | **207** testes passando; lint, type-check e build **exit 0** |
+| **E2E A–H (fluxo completo)** | identidade (registro/login/refresh com rotação + detecção de reuso/logout com revogação); organização → projeto → serviço → monitor com checagens HTTP reais contra alvo público (`https://example.com`); falha induzida (`http://example.com:81`); estado `DEGRADED`/`UNAVAILABLE`; alerta `TARGET_FAILURE_COUNT` `FIRING` com dedup; incidente automático `ALERT_AUTOMATION` com timeline; dashboard coerente; recuperação **AUTO** do alerta; resolve manual do incidente | **executado com evidência** — ciclo de vida completo verificado em runtime, não só em teste unitário |
+| Isolamento cross-tenant | 21+ cross-reads A↔B | **404 genérico** em todos — aprovado |
+| RBAC | papéis `ADMIN`/`OPERATOR`/`VIEWER` | matriz conforme contrato — aprovado |
+| Guarda SSRF | 34 casos negativos | **400 `MONITOR_TARGET_NOT_ALLOWED`**; revalidação em update; **sem flag de bypass** em produção; controle positivo público → `201` — aprovado |
+| Banco | Flyway no startup | **12/12** migrations `success`, **13 tabelas**, índice parcial `uq_alerts_open_rule` presente, **sem `V13`** |
+| Smoke de latência (local) | carga conc 10, endpoints da API | `/api/v1/organizations` **p95 ~31 ms**; `/api/v1/health` **p95 ~10 ms** — **não é SLA** (ambiente local, volume pequeno) |
+| Resiliência observacional | log da sessão de homologação | **`ERROR=0`** durante o fluxo — nenhum erro não tratado observado |
+
+### 9.2 Estado atualizado dos itens NOT VERIFIED do P17
+
+Numeração 1–12 espelha a tabela de bloqueadores da §4; o item 13 é o `EXPLAIN ANALYZE` declarado não executado em `performance.md` §9.
+
+| # | Item (§4 / performance.md) | Estado após P18 | Justificativa |
+| --- | --- | --- | --- |
+| 1 | Rate limiting | **NOT VERIFIED** (inexistente) | nenhum filtro/teto no código — sem o que exercitar |
+| 2 | MFA | **NOT VERIFIED** (inexistente) | nunca implementado |
+| 3 | Reset/verificação de senha | **NOT VERIFIED** (inexistente) | nunca implementado |
+| 4 | Audit log | **NOT VERIFIED** (inexistente) | `incident_events` é timeline de domínio, não auditoria |
+| 5 | Observabilidade (OTel/tracing/métricas de app) | **NOT VERIFIED** (inexistente) | só `health`/`info`; sem coletor |
+| 6 | Backup + restore exercitados | **NOT VERIFIED** (não exercitado) | backup padrão documentado em `production-checklist.md` §5, mas **restore não foi executado** neste projeto |
+| 7 | Load / capacity | **PARCIALMENTE MEDIDO** | smoke local conc 10: p95 ~31 ms (`/api/v1/organizations`) e ~10 ms (`/api/v1/health`) — **sem SLA**, sem carga sustentada nem volume real |
+| 8 | Pen-test / revisão independente | **NOT VERIFIED** (não executado) | guarda SSRF validada apenas por testes próprios |
+| 9 | CSP / HSTS / `Referrer-Policy` | **MEDIDO E CONFIRMADO AUSENTE** (gap medido, antes "não verificado por teste") | as respostas trazem apenas `X-Content-Type-Options` e `X-Frame-Options`; CSP/HSTS/`Referrer-Policy` **não são emitidos** pela aplicação — mitigação via reverse proxy (`production-checklist.md` §9/§14) |
+| 10 | Rotação de `JWT_SECRET` sem downtime | **NOT VERIFIED** (inexistente) | segredo único; troca invalida todos os tokens |
+| 11 | CI (GitHub Actions) | **NOT VERIFIED** (inexistente) | `.github/` sem workflow |
+| 12 | SLO / alerta interno do Sentinel | **NOT VERIFIED** (não definido) | sem meta, error budget nem probe interno |
+| 13 | `EXPLAIN ANALYZE` em volume real (`performance.md` §9) | **PARCIALMENTE MEDIDO** | planos observados em volume **pequeno** da homologação; sem dados reais/produção, o plano pode mudar — revisão em volume grande permanece pendente |
+
+### 9.3 Frontend em browser (E2E e a11y)
+
+**NOT VERIFIED** — Playwright (E2E de navegador) e jsdom/Testing Library (renderização DOM) **não existem** no repositório; a UI nunca foi exercitada em navegador real nesta homologação. Os 207 testes de frontend são unidades/helpers puros. Itens de acessibilidade (a11y) não medidos.
+
+### 9.4 Veredito de homologação
+
+**APTO COM RESSALVAS.**
+
+- **Sem P0/P1/P2 novos**: nada na homologação final apontou defeito novo de severidade alta — baselines íntegras, E2E A–H completo com evidência, isolamento/RBAC/SSRF aprovados, banco 12/12, resiliência observacional `ERROR=0`.
+- **Ressalvas** (condições para produção, não defeitos da homologação):
+  1. os 13 itens da §9.2 — sobretudo rate limiting, MFA, audit log, observabilidade, CSP/HSTS (agora **medido ausente**), CI, restore não exercitado e SLO indefinido;
+  2. UI em browser e a11y **NOT VERIFIED** (§9.3);
+  3. smoke de latência **local e sem SLA** (§9.1) — não substitui teste de carga;
+  4. provedor de hospedagem **não escolhido** (decisão do responsável — checklist operacional em [production-checklist.md](production-checklist.md)).

@@ -82,6 +82,7 @@ Constraints e índices:
 | `TARGET_FAILURE_COUNT` | `thresholdNumeric` (inteiro) | `≥ 0`, escala 0 (integer) | `>`, `≥`, `=` |
 | `SERVICE_STATUS` | `thresholdStatus` (`DEGRADED`/`UNAVAILABLE`) | enum fechado; `thresholdNumeric` deve ser `NULL` | `=` |
 
+- **A API aceita apenas os nomes do enum `AlertOperator`**, nunca os símbolos da tabela: `<` → `LESS_THAN`, `≤` → `LESS_THAN_OR_EQUAL`, `>` → `GREATER_THAN`, `≥` → `GREATER_THAN_OR_EQUAL`, `=` → `EQUAL` (enviar o símbolo no JSON vira `400 VALIDATION_ERROR`).
 - `thresholdNumeric` e `thresholdStatus` são **mutuamente exclusivos** (nunca coexistem) — a matriz rejeita qualquer combinação híbrida com `400 VALIDATION_ERROR`.
 - Alertar contra `OPERATIONAL`/`UNKNOWN` não faz sentido → só `DEGRADED`/`UNAVAILABLE` são aceitos como status.
 - **Matriz type × operator** (`AlertRuleValidationMatrix.ALLOWED_OPERATORS`): a tabela acima é a autoridade — qualquer operador fora da lista do tipo vira `400 operator: {OP} not allowed for {TYPE}`.
