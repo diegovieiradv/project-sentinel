@@ -30,7 +30,7 @@ graph TD
 
 | Item | Estado | Observável em |
 | --- | --- | --- |
-| **PERF-01 / PERF-02** — resolução em massa `resolveOpenForService` / `resolveOpenForProject` no caminho `Page<Alert>` + `Pageable` | Construído | `AlertParentInactiveTest` (+1) |
+| **PERF-01 / PERF-02** — resolução em massa `resolveOpenForService` / `resolveOpenForProject` no caminho `Page<Alert>` + `Pageable`, com **lote de 100 aplicado de fato** (critério #73) | Construído | `AlertParentInactiveTest` (+1), `AlertMassResolutionBatchTest` (+3) |
 | **PERF-03** — pré-check de dedup vira `findFirstByAlertRuleIdAndStatus` (derived limiting, `setMaxResults(1)` nasce na query) | Construído | `AlertDedupTest` (+1) |
 | **PERF-07** — `IncidentRepository.search` com `JOIN FETCH` da cadeia do tenant; paginação e teto de statements provados por teste | Construído | `IncidentApiTest` (+2) |
 | **PERF-11** — custo da subquery correlacionada de `findTopActiveForProject` documentado (risco aceito, `LIMIT` corta antes de contar) | Construído (JavaDoc) | `IncidentRepository` |
@@ -48,7 +48,9 @@ Toda afirmação de custo aqui é de uma de três formas: (a) **teste que observ
 
 **O que o teste prova** (`AlertParentInactiveTest`, +1): duas regras disparando na mesma janela viram **dois** alertas `FIRING`; ao desativar o serviço, **nenhum** pode ficar para trás — perder o segundo por corte de página seria um alerta preso em `FIRING` para sempre. O assert é `hasSize(2)` + todos `RESOLVED`/`PARENT_INACTIVE`.
 
-**O que a assinatura entrega de fato** (ver §8): os dois callers produtivos passam `Pageable.unpaged()`. Há, portanto, **nenhum `LIMIT`** na consulta e **nenhuma query de contagem** — a mudança tipológica (`List` → `Page`) mudou a forma, não o volume transferido. O valor real desta assinatura é ser o ponto único onde um `LIMIT` pode ser introduzido sem trocar o tipo de retorno de novo.
+**O que o lote entrega de fato** (correção do critério #73): os dois callers produtivos passam `PageRequest.of(0, 100, Sort(startedAt ASC, id ASC))` e repetem a leitura **sempre da página 0** até a página sair vazia — `AlertLifecycleService.resolveInBatches`. A consulta nasce com **teto** (`fetch first 100 rows only`, o dialeto do Hibernate 7) e **ordem total**; o loop tem duas condições de parada: página vazia e ausência de avanço entre leituras. Repetir do zero em vez de um offset crescente é o que evita pular linhas — `resolve()` encolhe o próprio conjunto do filtro `FIRING`, e um offset crescente deixaria alertas para trás presos em `FIRING` para sempre.
+
+**Evidência** (`AlertMassResolutionBatchTest`, 3 testes, banco real via Testcontainers): 250 alertas num serviço, 270 espalhados por 3 serviços de um projeto e 130 pela rede de segurança do engine — todos volumes maiores que um lote. A janela de SQL capturada por `StatementInspector` mostra exatamente `ceil(n/100) + 1` leituras de conteúdo, **todas** limitadas e ordenadas, zero leitura auxiliar por linha (`from alert_rules` = 0) e serviço vizinho/projeto vizinho intactos. Reverter para `Pageable.unpaged()` derruba os 3 testes (uma leitura, sem teto) — mutação executada durante a entrega.
 
 ## 4. PERF-03 — `LIMIT 1` no pré-check
 
@@ -104,11 +106,13 @@ Essa política já estava escrita em `DashboardQueryService` e em `docs/dashboar
 
 Registrado aqui — e repetido no relatório final — porque parte da documentação veio de geração automática e afirma mais do que o bytecode entrega. No Prompt 17 **nada disto foi editado** (fora de D1/D2); a revisão pós-entrega (ciclo 1) aplicou depois as recomendações da tabela, **somente em JavaDoc**. É informação para revisão.
 
+> **Atualização (critério #73)**: as linhas 1 e 3 deixaram de valer para o **caminho produtivo** — os dois callers agora recebem `PageRequest.of(0, 100, sort)` e o Javadoc do `AlertRepository` foi reescrito. Resta como `unpaged()` **apenas** o helper de teste `AbstractAlertEngineIntegrationTest.openAlertsOf`, que lê o conjunto aberto de um cenário pequeno (fora do escopo desta correção).
+
 | Claim | Onde | O que o código faz de fato | Recomendação |
 | --- | --- | --- | --- |
-| *"retorna `Page<Alert>` para **evitar carregar todos os registros em memória** em casos de grande volume"* | `AlertRepository.findByServiceIdAndStatus` e `findByProjectIdAndStatus` (Javadoc) | Os dois callers produtivos (`AlertLifecycleService:165,182`) passam `Pageable.unpaged()` → **sem `LIMIT`** (o binder pula `setFirstResult`/`setMaxResults`) e **sem `COUNT`** (`PageableExecutionUtils.getPage` nem invoca o `LongSupplier`). O mesmo vale para o helper de teste `AbstractAlertEngineIntegrationTest.openAlertsOf`. | Reescrever para "assinatura pronta para paginação; **não** limita linhas hoje" |
+| *"retorna `Page<Alert>` para **evitar carregar todos os registros em memória** em casos de grande volume"* | `AlertRepository.findByServiceIdAndStatus` e `findByProjectIdAndStatus` (Javadoc) | **Cumprido no caminho produtivo**: os dois callers passam `PageRequest.of(0, 100, sort)` (`AlertLifecycleService.resolveInBatches`) → **com `LIMIT`** (`fetch first ? rows only` no Hibernate 7) e **sem `COUNT`** nos lotes que não lotam (`PageableExecutionUtils.getPage` nem invoca o `LongSupplier`). O helper de teste `AbstractAlertEngineIntegrationTest.openAlertsOf` continua `Pageable.unpaged()`. | Reescrito no #73; qualificar apenas o helper de teste |
 | *"`Monitor.timeoutMillis` é o **ÚNICO** orçamento temporal desta checagem"* | `HttpMonitorExecutor` (Javadoc novo) | `JdkHttpTransport` constrói o cliente com `connectTimeout(10s)` fixo. Para `timeoutMillis > 10000` (o campo aceita até 30000), uma conexão pendurada é cortada aos **10 s**, não ao orçamento do monitor. | Qualificar: "orçamento da **resposta**; a conexão tem teto fixo de 10 s" |
-| *"Paginado para performance"* como benefício já ativo | idem | Só se torna verdade quando um `Pageable` paginado for passado — hoje nenhum é. | Idem à linha 1 |
+| *"Paginado para performance"* como benefício já ativo | idem | **Verdadeiro hoje** para `resolveOpenForService`/`resolveOpenForProject` (lote de 100 provado em `AlertMassResolutionBatchTest`); ainda não é verdade para o helper de teste `openAlertsOf`. | Idem à linha 1 |
 
 Os dois primeiros estavam **fora** do escopo de edição do Prompt 17 (só D1 e D2 foram aprovadas como dívidas de JavaDoc) e mudaram apenas na revisão pós-entrega, **só em JavaDoc**. O diff líquido de `HttpMonitorExecutor.java` em relação ao baseline é, portanto, **somente JavaDoc** — nenhuma linha de código foi acrescentada ou removida. Não havia overload no baseline para remover: o que tenha existido foi criado e retirado dentro da mesma sessão (líquido zero contra o baseline).
 
@@ -121,8 +125,7 @@ Os dois primeiros estavam **fora** do escopo de edição do Prompt 17 (só D1 e 
 | Benchmark de carga / latência p95 da API | Não executado |
 | Cache (`@Cacheable`, Redis) e pré-cálculo em background | Não existe |
 | Particionamento / `monitor_checks` com retention policy | Não existe |
-| Paginação aplicada de fato a `resolveOpenForService/Project` | Não aplicada (`unpaged`, §8) |
-| `Pageable` paginado no teste `openAlertsOf` | Usa `Pageable.unpaged()` (helper) |
+| `Pageable` paginado no teste `openAlertsOf` | Continua `Pageable.unpaged()` (helper de teste, fora do escopo do #73) — o caminho produtivo, sim, paginou em lote de 100 (§3) |
 | Tuning de pool, HikariCP, JVM flags | Fora do escopo |
 | Frontend: bundle budget, lazy loading, Lighthouse | Não medido |
 
@@ -133,6 +136,7 @@ Os dois primeiros estavam **fora** do escopo de edição do Prompt 17 (só D1 e 
 | `project/AlertParentInactiveTest` | +1 | PERF-01 / PERF-02 |
 | `project/AlertDedupTest` | +1 | PERF-03 |
 | `project/IncidentApiTest` | +2 | PERF-07 (paginação + contagem de statements) |
+| `project/AlertMassResolutionBatchTest` | +3 | PERF-01 / PERF-02 — critério #73 (lote de 100, volume > 1 lote, isolamento, SQL observada) |
 
 ## 11. Verificação executada nesta entrega
 
@@ -141,7 +145,9 @@ Os dois primeiros estavam **fora** do escopo de edição do Prompt 17 (só D1 e 
 | Compilação backend (main + test) | `mvn -q test-compile -DskipTests` | exit 0 |
 | Lint frontend | `npm run lint` (em `frontend/`) | exit 0 |
 | Type-check frontend | `npm run type-check` (em `frontend/`) | exit 0 |
-| Testes backend | `mvn test` | **exit 0 — 862 testes, 0 falhas, 0 erros, 0 ignorados** |
+| Testes backend | `mvn test` | **exit 0 — 862 testes, 0 falhas, 0 erros, 0 ignorados** (execução do Prompt 17, 2026-10-07) |
+| Testes backend (re-verificação do critério #73) | `mvn clean test` | **exit 0 — 865 testes, 0 falhas, 0 erros, 0 ignorados** (85 relatórios Surefire somando 865/0/0/0, execução 2026-10-08: baseline 862 + 3 novos) |
 | Testes frontend | `npm run test` (em `frontend/`) | **exit 0 — 207 testes, todos passando** |
+| Build backend (jar) | `mvn -DskipTests package` | exit 0 |
 | Migrations / índices | catálogo `V1…V12` | inalterado |
 | Dependências | `pom.xml` / `package.json` | inalterados |

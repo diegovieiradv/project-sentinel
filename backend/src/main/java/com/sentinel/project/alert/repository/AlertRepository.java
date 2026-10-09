@@ -97,11 +97,13 @@ public interface AlertRepository extends JpaRepository<Alert, UUID> {
      * lifecycle usa para resolver tudo com {@code PARENT_INACTIVE} quando o
      * serviço é desativado.
      *
-     * <p><b>Pronta para paginação:</b> a assinatura aceita {@link Pageable},
-     * mas os callers atuais ({@code AlertLifecycleService}) usam
-     * {@code Pageable.unpaged()} e, portanto, <b>não</b> aplicam {@code LIMIT}
-     * nem {@code COUNT} — o bound por linha continua sendo responsabilidade da
-     * query/da regra de negócio.
+     * <p><b>Paginação aplicada pelo caller (critério #73):</b> a assinatura
+     * aceita {@link Pageable} e o {@code AlertLifecycleService} passa uma
+     * página de 100 ({@code PageRequest.of(0, 100, startedAt ASC, id ASC)})
+     * repetida até o lote voltar vazio — cada leitura nasce com {@code LIMIT}
+     * e o conjunto inteiro nunca é carregado de uma vez. A exceção é o helper
+     * de teste {@code AbstractAlertEngineIntegrationTest.openAlertsOf}
+     * ({@code Pageable.unpaged()}, leitura de volume baixo em teste).</p>
      */
     Page<Alert> findByServiceIdAndStatus(
             @Param("serviceId") UUID serviceId, @Param("status") AlertStatus status, Pageable pageable);
@@ -110,11 +112,10 @@ public interface AlertRepository extends JpaRepository<Alert, UUID> {
      * Alertas abertos de TODOS os serviços de UM projeto — resolução em massa
      * com {@code PARENT_INACTIVE} quando o projeto é desativado.
      *
-     * <p><b>Pronta para paginação:</b> a assinatura aceita {@link Pageable},
-     * mas o caller produtivo ({@code AlertLifecycleService}) usa
-     * {@code Pageable.unpaged()} e, portanto, <b>não</b> aplica {@code LIMIT}
-     * nem {@code COUNT} — o bound por linha continua sendo responsabilidade da
-     * query/da regra de negócio.
+     * <p><b>Paginação aplicada pelo caller (critério #73):</b> mesmo arranjo
+     * do caminho por serviço — {@code AlertLifecycleService} lê em páginas de
+     * 100 pela página 0 até o lote voltar vazio, então toda leitura desta
+     * consulta é limitada no banco.</p>
      */
     @Query("""
             SELECT a

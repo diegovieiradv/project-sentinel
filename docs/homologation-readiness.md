@@ -43,7 +43,7 @@ graph LR
 | Verificação | Comando | Resultado |
 | --- | --- | --- |
 | Compilação backend (main + test) | `mvn -q test-compile -DskipTests` | **exit 0** |
-| Testes backend | `mvn test` | **exit 0 — 862 testes, 0 falhas, 0 erros, 0 ignorados** (84 relatórios Surefire somando 862/0/0/0, execução 2026-10-07 05:57–06:03; baseline do Prompt 16 = 837) |
+| Testes backend | `mvn clean test` | **exit 0 — 865 testes, 0 falhas, 0 erros, 0 ignorados** (85 relatórios Surefire somando 865/0/0/0, execução 2026-10-08 23:16–23:24; era 862 no Prompt 17, +3 do critério #73 em `AlertMassResolutionBatchTest`; baseline do Prompt 16 = 837) |
 | Testes frontend | `npm run test` (em `frontend/`) | **exit 0 — 207 testes em 10 arquivos, todos passando** (execução 2026-10-07 05:56; baseline 199) |
 | Lint frontend | `npm run lint` (em `frontend/`) | **exit 0**, sem achados |
 | Type-check frontend | `npm run type-check` (em `frontend/`) | **exit 0** |
@@ -52,7 +52,7 @@ graph LR
 | Integridade em runtime | `spring.jpa.hibernate.ddl-auto: validate` + `flyway.validate-on-migrate: true` | aplicado em `application.yml` |
 | Dependências | `pom.xml` / `package.json` | **inalterados** neste prompt |
 
-**Reconciliação de contagem** (por que 837 + 25 = 862 e 199 + 8 = 207): a divisão arquivo-a-arquivo está em `security-hardening.md` §8.
+**Reconciliação de contagem** (por que 837 + 25 = 862 e 199 + 8 = 207): a divisão arquivo-a-arquivo está em `security-hardening.md` §8. O salto **862 → 865** é do critério #73 (+3 testes em `project/AlertMassResolutionBatchTest`, listados em `performance.md` §10).
 
 ## 3. O que a homologação pode exercitar hoje
 
@@ -110,7 +110,7 @@ Registrado porque a homologação pergunta "e se…?":
 
 | Risco | Onde está declarado |
 | --- | --- |
-| Assinaturas `Page<Alert>` sem `LIMIT`/`COUNT` hoje | `performance.md` §8 |
+| Helper de teste `openAlertsOf` com `Page<Alert>` sem `LIMIT`/`COUNT` (o caminho produtivo paginou em lote de 100 no critério #73) | `performance.md` §8 |
 | `connectTimeout(10s)` fixo × `Monitor.timeoutMillis` até 30 s | `performance.md` §8 |
 | Subquery correlacionada do painel (custo por linha, aceito) | `performance.md` §6 |
 | Revalidação por redirect inexistente (não há redirect) | `security-hardening.md` §3.4 |
@@ -122,7 +122,7 @@ Registrado porque a homologação pergunta "e se…?":
 ```bash
 # backend
 cd backend && mvn -q test-compile -DskipTests     # exit 0
-cd backend && mvn test                            # 862, 0 falhas
+cd backend && mvn test                            # 865, 0 falhas
 
 # frontend
 cd frontend && npm ci

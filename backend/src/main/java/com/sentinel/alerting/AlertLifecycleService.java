@@ -2,6 +2,7 @@ package com.sentinel.alerting;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.function.Function;
 
 import com.sentinel.monitoring.Clock;
 import com.sentinel.project.alert.automation.event.AlertFiredEvent;
@@ -15,7 +16,10 @@ import com.sentinel.project.model.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,6 +58,15 @@ import org.springframework.transaction.annotation.Transactional;
  * (serviço/projeto desligado — estado congelado, sem afirmação sobre saúde).
  * Os dois últimos são acionados NA desativação (rotas de activation) e, como
  * rede de segurança, de novo no ciclo do engine.</p>
+ *
+ * <p><b>Resolução em massa em LOTES (critério #73):</b> os dois caminhos de
+ * massa ({@link #resolveOpenForService} e {@link #resolveOpenForProject})
+ * leem o conjunto aberto em páginas de {@value #RESOLVE_BATCH_SIZE} com ordem
+ * determinística — nunca com {@code Pageable.unpaged()}. Cada iteração repete
+ * a <b>primeira</b> página, resolve o lote e volta ao começo: como o lote
+ * resolvido sai do filtro {@code FIRING}, o que resta sempre ocupa a página 0
+ * da iteração seguinte. É isto que garante zero omissão — um offset crescente
+ * sobre um conjunto que encolhe pularia linhas.</p>
  *
  * <p><b>Relógio próprio:</b> cada método lê {@code clock.instant()} — o
  * MESMO bean {@link Clock} do motor de monitoramento (congelado nos testes).
@@ -139,6 +152,25 @@ public class AlertLifecycleService {
     // --- RESOLVED: os três motivos ------------------------------------------
 
     /**
+     * Tamanho do lote da resolução em massa (critério #73): cada leitura traz
+     * no máximo {@value #RESOLVE_BATCH_SIZE} alertas abertos — nenhum caminho
+     * de produção carrega o conjunto inteiro de uma vez. Defensivo de
+     * propósito: o volume real é limitado pelo índice parcial
+     * {@code uq_alerts_open_rule} (≤1 alerta FIRING por regra), mas o CONTROLE
+     * do tamanho da leitura mora na aplicação, não na casualidade do volume.
+     */
+    private static final int RESOLVE_BATCH_SIZE = 100;
+
+    /**
+     * Ordem DETERMINÍSTICA dos lotes: {@code startedAt ASC} com desempate em
+     * {@code id ASC}. Sem ordem explícita o banco pode devolver sequências
+     * diferentes entre leituras; com ela a progressão do loop é reprodutível
+     * (e auditável), inclusive sob empate de {@code startedAt}.
+     */
+    private static final Sort RESOLVE_SORT =
+            Sort.by(Sort.Order.asc("startedAt"), Sort.Order.asc("id"));
+
+    /**
      * Resolve o alerta aberto de UMA regra (AUTO ou RULE_DEACTIVATED).
      * Idempotente: sem alerta aberto é no-op.
      *
@@ -156,21 +188,28 @@ public class AlertLifecycleService {
      * Resolve EM MASSA todos os alertas abertos de um serviço
      * (PARENT_INACTIVE — serviço desativado). Idempotente.
      *
+     * <p><b>Lotes de {@value #RESOLVE_BATCH_SIZE}, sempre pela página 0</b>
+     * (critério #73): a leitura é paginada de verdade — nunca
+     * {@code Pageable.unpaged()}. Ver {@link #resolveInBatches} para a
+     * progressão e para as duas condições de parada.</p>
+     *
      * @param serviceId serviço dono dos alertas
      * @param reason    motivo do encerramento
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void resolveOpenForService(UUID serviceId, AlertResolutionReason reason) {
         Instant now = clock.instant();
-        for (Alert alert : alertRepository.findByServiceIdAndStatus(
-                serviceId, AlertStatus.FIRING, Pageable.unpaged())) {
-            resolve(alert, reason, now);
-        }
+        resolveInBatches(reason, now, pageable -> alertRepository.findByServiceIdAndStatus(
+                serviceId, AlertStatus.FIRING, pageable));
     }
 
     /**
      * Resolve EM MASSA os alertas abertos de todos os serviços de UM projeto
      * (PARENT_INACTIVE na desativação do projeto). Idempotente.
+     *
+     * <p><b>Os mesmos lotes de {@value #RESOLVE_BATCH_SIZE} pela página 0</b>
+     * (critério #73): mesmo esquema do caminho por serviço — cada leitura é
+     * limitada no banco e o conjunto restante recomeça sempre na página 0.</p>
      *
      * @param projectId projeto dono dos serviços
      * @param reason    motivo do encerramento
@@ -178,9 +217,72 @@ public class AlertLifecycleService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void resolveOpenForProject(UUID projectId, AlertResolutionReason reason) {
         Instant now = clock.instant();
-        for (Alert alert : alertRepository.findByProjectIdAndStatus(
-                projectId, AlertStatus.FIRING, Pageable.unpaged())) {
-            resolve(alert, reason, now);
+        resolveInBatches(reason, now, pageable -> alertRepository.findByProjectIdAndStatus(
+                projectId, AlertStatus.FIRING, pageable));
+    }
+
+    /**
+     * Núcleo compartilhado dos dois caminhos de massa: repete a <b>primeira</b>
+     * página ({@code PageRequest.of(0, 100, startedAt ASC, id ASC)}) até ela
+     * voltar vazia.
+     *
+     * <p><b>Por que página 0 e não offset crescente:</b> dentro do loop o
+     * status muda de {@code FIRING} para {@code RESOLVED}, ou seja, os alertas
+     * resolvidos SAEM do filtro da query a cada iteração. Com offset crescente
+     * sobre um conjunto que encolhe, as páginas seguintes deslizam para fora
+     * do que sobrou (250 alertas: página 0 resolve os 0–99; restam 150; offset
+     * 100 cairia depois dos originais 100–199) e linhas seriam puladas.
+     * Repetindo a página 0, o lote processado some do filtro e o que resta
+     * desliza naturalmente para o começo — sem lacuna e sem repetição.</p>
+     *
+     * <p><b>Terminação comprovável, duas saídas:</b></p>
+     * <ol>
+     *   <li><b>página vazia</b> — cada iteração resolve ao menos UM alerta e
+     *       faz {@code flush}; o alerta resolvido deixa de casar com
+     *       {@code status = FIRING}, então o conjunto de entrada strictly
+     *       decresce e, sendo finito, o loop termina;</li>
+     *   <li><b>sem avanço</b> — se a primeira linha da página seguinte for a
+     *       MESMA da anterior, o filtro não encolheu (não deveria acontecer:
+     *       {@link Alert#resolve} sempre troca o status); em vez de girar para
+     *       sempre, o loop registra o erro e encerra com o que já resolveu,
+     *       deixando a rede de segurança do engine reagir no ciclo seguinte.</li>
+     * </ol>
+     *
+     * <p>A saída 1 é observável no SQL (uma página vazia extra, dentro do
+     * teto {@code ceil(n / 100) + 1} leituras); a saída 2 é um guard contra
+     * regressão futura do próprio {@code resolve}.</p>
+     *
+     * @param reason    motivo do encerramento (compartilhado por todo o lote)
+     * @param now       instante único de resolução (relógio congelado nos testes)
+     * @param openBatch leitura dos alertas ainda {@code FIRING} para o escopo
+     *                  (serviço OU projeto), já com o {@link Pageable} do lote
+     */
+    private void resolveInBatches(
+            AlertResolutionReason reason,
+            Instant now,
+            Function<Pageable, Page<Alert>> openBatch) {
+        UUID previousFirstId = null;
+        while (true) {
+            Page<Alert> batch =
+                    openBatch.apply(PageRequest.of(0, RESOLVE_BATCH_SIZE, RESOLVE_SORT));
+            if (batch.isEmpty()) {
+                return;
+            }
+            UUID firstId = batch.getContent().get(0).getId();
+            if (firstId.equals(previousFirstId)) {
+                log.error("alert batch made no progress: filter did not shrink "
+                                + "reason={} firstAlertId={} batch={}",
+                        reason, firstId, batch.getContent().size());
+                return;
+            }
+            previousFirstId = firstId;
+            for (Alert alert : batch) {
+                resolve(alert, reason, now);
+            }
+            // Descarrega as transições ANTES da próxima leitura: o WHERE
+            // status = FIRING precisa enxergar o lote recém-resolvido, senão a
+            // página 0 devolveria as mesmas linhas (e o guard acima dispararia).
+            alertRepository.flush();
         }
     }
 
