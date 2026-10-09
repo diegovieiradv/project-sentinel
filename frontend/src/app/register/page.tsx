@@ -68,7 +68,7 @@ export default function RegisterPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ada Lovelace"
-              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none"
+              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
             />
           </div>
 
@@ -84,7 +84,7 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none"
+              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
             />
           </div>
 
@@ -101,7 +101,7 @@ export default function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="min. 8 chars, 1 letter, 1 digit"
-              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none"
+              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
             />
             <p className="text-xs text-(--muted)">
               At least 8 characters, including a letter and a digit.
@@ -120,7 +120,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-1 w-full rounded-md bg-(--accent) px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            className="mt-1 w-full rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {loading ? "Creating…" : "Create account"}
           </button>
@@ -128,14 +128,14 @@ export default function RegisterPage() {
 
         <p className="mt-4 text-center text-sm text-(--muted)">
           Already have an account?{" "}
-          <Link href="/login" className="text-(--accent) hover:underline">
+          <Link href="/login" className="px-3 py-2.5 min-h-[44px] inline-flex items-center text-(--accent) hover:underline">
             Sign in
           </Link>
         </p>
       </div>
 
       <p className="mt-4 text-sm">
-        <Link href="/" className="text-(--muted) hover:text-white">
+        <Link href="/" className="px-3 py-2.5 min-h-[44px] inline-flex items-center text-(--muted) hover:text-white">
           ← Back to home
         </Link>
       </p>

@@ -233,7 +233,7 @@ function MembersPanel({ org }: { org: OrganizationResponse }) {
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
           >
             Retry
           </button>
@@ -274,7 +274,7 @@ function MembersPanel({ org }: { org: OrganizationResponse }) {
                           event.target.value as OrganizationRole
                         )
                       }
-                      className="rounded-md border border-(--border) bg-(--background) px-2 py-1 text-xs text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                      className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                     >
                       {ROLE_OPTIONS.map((role) => (
                         <option key={role} value={role}>
@@ -288,7 +288,7 @@ function MembersPanel({ org }: { org: OrganizationResponse }) {
                       type="button"
                       onClick={() => void onRemoveMember(member.membershipId)}
                       disabled={busy}
-                      className="rounded-md border border-(--destructive)/40 px-2 py-1 text-xs font-semibold text-(--destructive) transition hover:bg-(--destructive) hover:text-white disabled:opacity-50"
+                      className="rounded-md border border-(--destructive)/40 px-3 py-2.5 min-h-[44px] text-xs font-semibold text-(--destructive) transition hover:bg-(--destructive) hover:text-white disabled:opacity-50"
                     >
                       {busy ? "Working…" : "Remove"}
                     </button>
@@ -299,7 +299,7 @@ function MembersPanel({ org }: { org: OrganizationResponse }) {
           </table>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-(--muted)">Loading members…</p>
+        <p className="mt-2 text-sm text-(--muted)" role="status">Loading members…</p>
       )}
 
       {status !== "error" && memberError && (
@@ -323,7 +323,7 @@ function MembersPanel({ org }: { org: OrganizationResponse }) {
           }
           placeholder="user@example.com"
           disabled={busy}
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label htmlFor="member-role" className="sr-only">
           Member role
@@ -338,7 +338,7 @@ function MembersPanel({ org }: { org: OrganizationResponse }) {
             }))
           }
           disabled={busy}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           {ROLE_OPTIONS.map((role) => (
             <option key={role} value={role}>
@@ -349,7 +349,7 @@ function MembersPanel({ org }: { org: OrganizationResponse }) {
         <button
           type="submit"
           disabled={busy || memberForm.email.trim() === ""}
-          className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "Working…" : "Add member"}
         </button>
@@ -625,7 +625,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           placeholder="Search by name…"
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label htmlFor="project-status-filter" className="sr-only">
           Filter projects by status
@@ -637,7 +637,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
             setStatusFilter(event.target.value as ProjectStatusFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All statuses</option>
           <option value="active">Active</option>
@@ -654,7 +654,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
           >
             Retry
           </button>
@@ -708,7 +708,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                             onClick={() => onToggleDetails(project)}
                             aria-expanded={isExpanded}
                             disabled={busy}
-                            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                           >
                             {isExpanded ? "Close" : "Details"}
                           </button>
@@ -716,7 +716,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                             type="button"
                             onClick={() => void onToggleStatus(project)}
                             disabled={!canManage || busy}
-                            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                           >
                             {togglingId === project.id
                               ? "Saving…"
@@ -764,7 +764,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                                     }))
                                   }
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <label
                                   htmlFor={`project-edit-description-${project.id}`}
@@ -783,7 +783,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                                   }
                                   placeholder="Description (optional)"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <div className="flex flex-wrap items-center gap-2">
                                   <button
@@ -791,7 +791,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                                     disabled={
                                       busy || editForm.name.trim() === ""
                                     }
-                                    className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                                    className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                                   >
                                     {saving ? "Saving…" : "Save changes"}
                                   </button>
@@ -802,7 +802,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                                       setEditError(null);
                                     }}
                                     disabled={busy}
-                                    className="rounded-md border border-(--border) px-3 py-2 text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    className="rounded-md border border-(--border) px-4 py-3 min-h-[44px] text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                                   >
                                     Close
                                   </button>
@@ -855,7 +855,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                 type="button"
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
                 disabled={page === 0 || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Previous
               </button>
@@ -863,7 +863,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
                 type="button"
                 onClick={() => setPage((current) => current + 1)}
                 disabled={page + 1 >= totalPages || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Next
               </button>
@@ -871,7 +871,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
           </div>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-(--muted)">Loading projects…</p>
+        <p className="mt-3 text-sm text-(--muted)" role="status">Loading projects…</p>
       )}
 
       {/* Feedback de sucesso/falha de ações sobre a lista */}
@@ -908,12 +908,12 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
               }
               placeholder="New project name"
               disabled={busy}
-              className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={busy || createForm.name.trim() === ""}
-              className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {creating ? "Creating…" : "Create project"}
             </button>
@@ -932,7 +932,7 @@ function ProjectsPanel({ org }: { org: OrganizationResponse }) {
             }
             placeholder="Description (optional)"
             disabled={busy}
-            className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           />
           {createError && (
             <p className="text-sm text-(--destructive)">{createError}</p>
@@ -1070,7 +1070,7 @@ function OrganizationSection() {
         {/* Lista / loading / vazio / erro de rede */}
         <div className="mt-3">
           {orgsStatus === "loading" ? (
-            <p className="text-sm text-(--muted)">Loading organizations…</p>
+            <p className="text-sm text-(--muted)" role="status">Loading organizations…</p>
           ) : orgsStatus === "error" ? (
             <div className="rounded-md border border-(--destructive)/40 bg-(--destructive)/10 p-3 text-sm">
               <p className="text-(--destructive)">
@@ -1079,7 +1079,7 @@ function OrganizationSection() {
               <button
                 type="button"
                 onClick={() => setReload((count) => count + 1)}
-                className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+                className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
               >
                 Retry
               </button>
@@ -1098,7 +1098,7 @@ function OrganizationSection() {
                       type="button"
                       onClick={() => handleSelectOrg(org)}
                       aria-pressed={isActive}
-                      className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm transition ${
+                      className={`flex w-full items-center justify-between gap-3 rounded-md border px-4 py-3 min-h-[44px] text-left text-sm transition ${
                         isActive
                           ? "border-(--accent) bg-(--accent)/10 text-white"
                           : "border-(--border) text-(--muted) hover:border-(--border-hover) hover:text-white"
@@ -1142,12 +1142,12 @@ function OrganizationSection() {
             placeholder="New organization name"
             maxLength={128}
             disabled={creatingOrg}
-            className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+            className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={creatingOrg || orgName.trim().length === 0}
-            className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {creatingOrg ? "Creating…" : "Create"}
           </button>

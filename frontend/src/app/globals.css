@@ -4,11 +4,15 @@
 :root {
   --background: #0a0e1a;
   --foreground: #e2e8f0;
-  --muted: #94a3b8;
+  /* A11Y-05 (contraste WCAG): #cbd5e1 → 12.97:1 sobre #0a0e1a,
+     11.95:1 sobre #111827 (AAA; era #94a3b8 = 7.51:1 / 6.92:1). */
+  --muted: #cbd5e1;
   --accent: #0ea5e9;
   --accent-soft: #06b6d4;
   --card: #111827;
-  --destructive: #ef4444;
+  /* A11Y-05 (contraste WCAG): #f87171 → 6.96:1 sobre #0a0e1a,
+     6.41:1 sobre #111827 (AA; era #ef4444 = 5.12:1 / 4.71:1). */
+  --destructive: #f87171;
   --border: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.12);
 }
@@ -16,11 +20,11 @@
 .dark {
   --background: #0a0e1a;
   --foreground: #e2e8f0;
-  --muted: #94a3b8;
+  --muted: #cbd5e1;
   --accent: #0ea5e9;
   --accent-soft: #06b6d4;
   --card: #111827;
-  --destructive: #ef4444;
+  --destructive: #f87171;
   --border: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.12);
 }
@@ -70,4 +74,18 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
+}
+
+/* A11Y-03 — respeita a preferência do sistema por menos movimento.
+   Anula transições/animações Tailwind (67 ocorrências de `transition`)
+   sem precisar mexer em cada componente. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

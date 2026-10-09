@@ -19,6 +19,8 @@ npm run start     # serve o build de produção
 npm test          # vitest run — testes unitários de src/lib (environment node)
 ```
 
+Testes E2E em navegador (Playwright, requer servidores de pé): `npm run test:e2e` — ver [docs/frontend-e2e.md](../docs/frontend-e2e.md).
+
 ## Configuração
 
 | Variável              | Default                 | Descrição                       |

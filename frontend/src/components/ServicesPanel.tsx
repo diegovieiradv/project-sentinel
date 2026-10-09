@@ -382,7 +382,7 @@ export default function ServicesPanel({
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           placeholder="Search by name…"
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label
           htmlFor={`service-active-filter-${project.id}`}
@@ -397,7 +397,7 @@ export default function ServicesPanel({
             setActiveFilter(event.target.value as ServiceActiveFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           <option value="active">Active</option>
@@ -416,7 +416,7 @@ export default function ServicesPanel({
             setStatusFilter(event.target.value as ServiceStatusFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All statuses</option>
           {SERVICE_STATUS_OPTIONS.map((option) => (
@@ -436,7 +436,7 @@ export default function ServicesPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
           >
             Retry
           </button>
@@ -483,7 +483,7 @@ export default function ServicesPanel({
                             onClick={() => onToggleDetails(service)}
                             aria-expanded={isExpanded}
                             disabled={busy}
-                            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                           >
                             {isExpanded ? "Close" : "Details"}
                           </button>
@@ -491,7 +491,7 @@ export default function ServicesPanel({
                             type="button"
                             onClick={() => void onToggleActivation(service)}
                             disabled={!canManage || busy}
-                            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                           >
                             {togglingId === service.id
                               ? "Saving…"
@@ -545,7 +545,7 @@ export default function ServicesPanel({
                                     }))
                                   }
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <label
                                   htmlFor={`service-edit-description-${service.id}`}
@@ -564,7 +564,7 @@ export default function ServicesPanel({
                                   }
                                   placeholder="Description (optional)"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <div className="flex flex-wrap items-center gap-2">
                                   <button
@@ -572,7 +572,7 @@ export default function ServicesPanel({
                                     disabled={
                                       busy || editForm.name.trim() === ""
                                     }
-                                    className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                                    className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                                   >
                                     {saving ? "Saving…" : "Save changes"}
                                   </button>
@@ -583,7 +583,7 @@ export default function ServicesPanel({
                                       setEditError(null);
                                     }}
                                     disabled={busy}
-                                    className="rounded-md border border-(--border) px-3 py-2 text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    className="rounded-md border border-(--border) px-4 py-3 min-h-[44px] text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                                   >
                                     Close
                                   </button>
@@ -663,7 +663,7 @@ export default function ServicesPanel({
                 type="button"
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
                 disabled={page === 0 || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Previous
               </button>
@@ -671,7 +671,7 @@ export default function ServicesPanel({
                 type="button"
                 onClick={() => setPage((current) => current + 1)}
                 disabled={page + 1 >= totalPages || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Next
               </button>
@@ -679,7 +679,7 @@ export default function ServicesPanel({
           </div>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-(--muted)">Loading services…</p>
+        <p className="mt-3 text-sm text-(--muted)" role="status">Loading services…</p>
       )}
 
       {/* Feedback de sucesso/falha de ações sobre a lista */}
@@ -716,12 +716,12 @@ export default function ServicesPanel({
               }
               placeholder="New service name"
               disabled={busy}
-              className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={busy || createForm.name.trim() === ""}
-              className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {creating ? "Creating…" : "Create service"}
             </button>
@@ -743,7 +743,7 @@ export default function ServicesPanel({
             }
             placeholder="Description (optional)"
             disabled={busy}
-            className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           />
           {createError && (
             <p className="text-sm text-(--destructive)">{createError}</p>

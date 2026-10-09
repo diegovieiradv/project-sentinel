@@ -184,7 +184,7 @@ export default function AlertsPanel({ service }: { service: ServiceResponse }) {
               setStatusFilter(event.target.value as AlertStatusFilter);
               setPage(0);
             }}
-            className="rounded-md border border-(--border) bg-(--background) px-2 py-1 text-sm text-white focus:border-(--accent) focus:outline-none"
+            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
           >
             <option value="all">All</option>
             {ALERT_STATUS_OPTIONS.map((option) => (
@@ -207,7 +207,7 @@ export default function AlertsPanel({ service }: { service: ServiceResponse }) {
               setSeverityFilter(event.target.value as AlertSeverity | "all");
               setPage(0);
             }}
-            className="rounded-md border border-(--border) bg-(--background) px-2 py-1 text-sm text-white focus:border-(--accent) focus:outline-none"
+            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
           >
             <option value="all">All</option>
             {ALERT_SEVERITY_OPTIONS.map((option) => (
@@ -234,7 +234,7 @@ export default function AlertsPanel({ service }: { service: ServiceResponse }) {
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-xs font-semibold text-white transition hover:border-(--border-hover)"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-xs font-semibold text-white transition hover:border-(--border-hover)"
           >
             Retry
           </button>
@@ -334,7 +334,7 @@ export default function AlertsPanel({ service }: { service: ServiceResponse }) {
                 type="button"
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
                 disabled={page === 0}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-xs font-semibold text-white transition hover:border-(--border-hover) disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-xs font-semibold text-white transition hover:border-(--border-hover) disabled:opacity-50"
               >
                 Previous
               </button>
@@ -346,7 +346,7 @@ export default function AlertsPanel({ service }: { service: ServiceResponse }) {
                   )
                 }
                 disabled={page + 1 >= totalPages}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-xs font-semibold text-white transition hover:border-(--border-hover) disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-xs font-semibold text-white transition hover:border-(--border-hover) disabled:opacity-50"
               >
                 Next
               </button>

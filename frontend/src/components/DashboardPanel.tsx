@@ -115,7 +115,7 @@ export default function DashboardPanel({
               }
             }}
             disabled={status === "loading"}
-            className="rounded-md border border-(--border) bg-(--background) px-2 py-1 text-xs text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           >
             {METRICS_RANGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -127,7 +127,7 @@ export default function DashboardPanel({
             type="button"
             onClick={() => setReload((count) => count + 1)}
             disabled={status === "loading"}
-            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
           >
             {status === "loading" ? "Loading…" : "Refresh"}
           </button>
@@ -135,7 +135,7 @@ export default function DashboardPanel({
       </div>
 
       {status === "loading" || status === "idle" ? (
-        <p className="mt-3 text-sm text-(--muted)">Loading dashboard…</p>
+        <p className="mt-3 text-sm text-(--muted)" role="status">Loading dashboard…</p>
       ) : status === "error" ? (
         <div className="mt-3 rounded-md border border-(--destructive)/40 bg-(--destructive)/10 p-3 text-sm">
           <p className="text-(--destructive)">
@@ -144,7 +144,7 @@ export default function DashboardPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
           >
             Retry
           </button>

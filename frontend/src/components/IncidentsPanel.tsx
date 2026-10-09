@@ -279,7 +279,7 @@ export default function IncidentsPanel({
             setExpandedId(null);
           }}
           disabled={busy}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           {INCIDENT_STATUS_OPTIONS.map((option) => (
@@ -304,7 +304,7 @@ export default function IncidentsPanel({
             setExpandedId(null);
           }}
           disabled={busy}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           {INCIDENT_SEVERITY_OPTIONS.map((severity) => (
@@ -331,7 +331,7 @@ export default function IncidentsPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
           >
             Retry
           </button>
@@ -411,7 +411,7 @@ export default function IncidentsPanel({
                           }}
                           aria-expanded={isExpanded}
                           disabled={busy}
-                          className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                          className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                         >
                           {isExpanded ? "Close" : "Details"}
                         </button>
@@ -452,7 +452,7 @@ export default function IncidentsPanel({
                 type="button"
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
                 disabled={page === 0 || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Previous
               </button>
@@ -460,7 +460,7 @@ export default function IncidentsPanel({
                 type="button"
                 onClick={() => setPage((current) => current + 1)}
                 disabled={page + 1 >= totalPages || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Next
               </button>
@@ -513,7 +513,7 @@ export default function IncidentsPanel({
               placeholder="Checkout returning HTTP 500"
               maxLength={200}
               disabled={busy}
-              className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+              className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
           </div>
 
@@ -535,7 +535,7 @@ export default function IncidentsPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 {INCIDENT_SEVERITY_OPTIONS.map((severity) => (
                   <option key={severity} value={severity}>
@@ -562,7 +562,7 @@ export default function IncidentsPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
               <p className="text-xs text-(--muted)">
                 Leave empty to use the current time.
@@ -590,7 +590,7 @@ export default function IncidentsPanel({
               maxLength={4000}
               placeholder="Optional — impact, scope, first signals…"
               disabled={busy}
-              className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+              className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
           </div>
 
@@ -598,7 +598,7 @@ export default function IncidentsPanel({
             <button
               type="submit"
               disabled={busy || createForm.title.trim() === ""}
-              className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {creating ? "Creating…" : "Create incident"}
             </button>

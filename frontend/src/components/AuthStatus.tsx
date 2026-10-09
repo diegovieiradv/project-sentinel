@@ -179,13 +179,13 @@ export default function AuthStatus({ onAuthStateChange }: AuthStatusProps = {}) 
         <div className="mt-2 flex gap-3">
           <Link
             href="/login"
-            className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] inline-flex items-center text-(--muted) transition hover:border-(--border-hover) hover:text-white"
           >
             Sign in
           </Link>
           <Link
             href="/register"
-            className="rounded-md bg-(--accent) px-3 py-1.5 font-semibold text-white transition hover:opacity-90"
+            className="rounded-md bg-(--accent) px-4 py-2.5 min-h-[44px] inline-flex items-center font-semibold text-white transition hover:opacity-90"
           >
             Create account
           </Link>
@@ -206,7 +206,7 @@ export default function AuthStatus({ onAuthStateChange }: AuthStatusProps = {}) 
           <button
             onClick={onSignOut}
             disabled={loggingOut}
-            className="mt-1 rounded-md bg-(--destructive) px-3 py-1.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            className="mt-1 rounded-md bg-(--destructive) px-4 py-2.5 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {loggingOut ? "Signing out…" : "Sign out"}
           </button>
@@ -223,13 +223,13 @@ export default function AuthStatus({ onAuthStateChange }: AuthStatusProps = {}) 
         <div className="mt-1 flex items-center gap-3">
           <Link
             href="/login"
-            className="text-(--accent) hover:underline"
+            className="px-3 py-2.5 min-h-[44px] inline-flex items-center text-(--accent) hover:underline"
           >
             Try sign in
           </Link>
           <Link
             href="/"
-            className="text-(--accent) hover:underline"
+            className="px-3 py-2.5 min-h-[44px] inline-flex items-center text-(--accent) hover:underline"
           >
             Go to home
           </Link>
@@ -242,13 +242,13 @@ export default function AuthStatus({ onAuthStateChange }: AuthStatusProps = {}) 
     <div className="flex items-center gap-3 text-sm">
       <Link
         href="/login"
-        className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+        className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] inline-flex items-center text-(--muted) transition hover:border-(--border-hover) hover:text-white"
       >
         Sign in
       </Link>
       <Link
         href="/register"
-        className="rounded-md bg-(--accent) px-3 py-1.5 font-semibold text-white transition hover:opacity-90"
+        className="rounded-md bg-(--accent) px-4 py-2.5 min-h-[44px] inline-flex items-center font-semibold text-white transition hover:opacity-90"
       >
         Create account
       </Link>

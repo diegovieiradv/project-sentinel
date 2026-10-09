@@ -587,7 +587,7 @@ export default function MonitorsPanel({
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           placeholder="Search by name…"
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--card) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--card) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label
           htmlFor={`monitor-active-filter-${service.id}`}
@@ -602,7 +602,7 @@ export default function MonitorsPanel({
             setActiveFilter(event.target.value as MonitorActiveFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--card) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--card) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           <option value="active">Active</option>
@@ -621,7 +621,7 @@ export default function MonitorsPanel({
             setMethodFilter(event.target.value as MonitorMethodFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--card) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--card) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All methods</option>
           {MONITOR_METHOD_OPTIONS.map((option) => (
@@ -641,7 +641,7 @@ export default function MonitorsPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
           >
             Retry
           </button>
@@ -690,7 +690,7 @@ export default function MonitorsPanel({
                             onClick={() => onToggleDetails(monitor)}
                             aria-expanded={isExpanded}
                             disabled={busy}
-                            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                           >
                             {isExpanded ? "Close" : "Details"}
                           </button>
@@ -698,7 +698,7 @@ export default function MonitorsPanel({
                             type="button"
                             onClick={() => void onToggleActivation(monitor)}
                             disabled={!canManage || busy}
-                            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                           >
                             {togglingId === monitor.id
                               ? "Saving…"
@@ -760,7 +760,7 @@ export default function MonitorsPanel({
                                   }
                                   placeholder="Monitor name"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <label
                                   htmlFor={`monitor-edit-url-${monitor.id}`}
@@ -780,7 +780,7 @@ export default function MonitorsPanel({
                                   }
                                   placeholder="https://example.com/health"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <div className="flex flex-wrap items-end gap-2">
                                   <span className="flex flex-col gap-1">
@@ -801,7 +801,7 @@ export default function MonitorsPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     >
                                       {MONITOR_METHOD_OPTIONS.map((option) => (
                                         <option key={option} value={option}>
@@ -831,7 +831,7 @@ export default function MonitorsPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="w-28 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                      className="w-28 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     />
                                     <span className="text-xs text-(--muted)">
                                       {INTERVAL_MIN}–{INTERVAL_MAX}s, default{" "}
@@ -859,7 +859,7 @@ export default function MonitorsPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="w-32 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                      className="w-32 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     />
                                     <span className="text-xs text-(--muted)">
                                       {TIMEOUT_MIN}–{TIMEOUT_MAX}ms, default{" "}
@@ -875,7 +875,7 @@ export default function MonitorsPanel({
                                       editForm.name.trim() === "" ||
                                       editForm.url.trim() === ""
                                     }
-                                    className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                                    className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                                   >
                                     {saving ? "Saving…" : "Save changes"}
                                   </button>
@@ -886,7 +886,7 @@ export default function MonitorsPanel({
                                       setEditError(null);
                                     }}
                                     disabled={busy}
-                                    className="rounded-md border border-(--border) px-3 py-2 text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    className="rounded-md border border-(--border) px-4 py-3 min-h-[44px] text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                                   >
                                     Close
                                   </button>
@@ -941,7 +941,7 @@ export default function MonitorsPanel({
                               </div>
 
                               {checksStatus === "loading" ? (
-                                <p className="mt-2 text-sm text-(--muted)">
+                                <p className="mt-2 text-sm text-(--muted)" role="status">
                                   Loading checks…
                                 </p>
                               ) : checksStatus === "error" ? (
@@ -953,7 +953,7 @@ export default function MonitorsPanel({
                                     type="button"
                                     onClick={() => setReload((count) => count + 1)}
                                     disabled={busy}
-                                    className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                                   >
                                     Retry
                                   </button>
@@ -1007,7 +1007,7 @@ export default function MonitorsPanel({
                                         )
                                       }
                                       disabled={checksPage === 0 || busy}
-                                      className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                      className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                                     >
                                       Previous
                                     </button>
@@ -1020,7 +1020,7 @@ export default function MonitorsPanel({
                                         checksPage + 1 >= checksTotalPages ||
                                         busy
                                       }
-                                      className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                      className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                                     >
                                       Next
                                     </button>
@@ -1050,7 +1050,7 @@ export default function MonitorsPanel({
                 type="button"
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
                 disabled={page === 0 || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Previous
               </button>
@@ -1058,7 +1058,7 @@ export default function MonitorsPanel({
                 type="button"
                 onClick={() => setPage((current) => current + 1)}
                 disabled={page + 1 >= totalPages || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Next
               </button>
@@ -1066,7 +1066,7 @@ export default function MonitorsPanel({
           </div>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-(--muted)">Loading monitors…</p>
+        <p className="mt-3 text-sm text-(--muted)" role="status">Loading monitors…</p>
       )}
 
       {/* Feedback de sucesso/falha de ações sobre a lista */}
@@ -1107,7 +1107,7 @@ export default function MonitorsPanel({
                 }
                 placeholder="New monitor name"
                 disabled={busy}
-                className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -1129,7 +1129,7 @@ export default function MonitorsPanel({
                 }
                 placeholder="https://example.com/health"
                 disabled={busy}
-                className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
             </span>
           </div>
@@ -1152,7 +1152,7 @@ export default function MonitorsPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 {MONITOR_METHOD_OPTIONS.map((option) => (
                   <option key={option} value={option}>
@@ -1182,7 +1182,7 @@ export default function MonitorsPanel({
                   }))
                 }
                 disabled={busy}
-                className="w-28 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="w-28 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
               <span className="text-xs text-(--muted)">
                 {INTERVAL_MIN}–{INTERVAL_MAX}s, default {INTERVAL_DEFAULT}
@@ -1209,7 +1209,7 @@ export default function MonitorsPanel({
                   }))
                 }
                 disabled={busy}
-                className="w-32 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="w-32 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
               <span className="text-xs text-(--muted)">
                 {TIMEOUT_MIN}–{TIMEOUT_MAX}ms, default {TIMEOUT_DEFAULT}
@@ -1222,7 +1222,7 @@ export default function MonitorsPanel({
                 createForm.name.trim() === "" ||
                 createForm.url.trim() === ""
               }
-              className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {creating ? "Creating…" : "Create monitor"}
             </button>

@@ -191,3 +191,56 @@ Numeração 1–12 espelha a tabela de bloqueadores da §4; o item 13 é o `EXPL
   2. UI em browser e a11y **NOT VERIFIED** (§9.3);
   3. smoke de latência **local e sem SLA** (§9.1) — não substitui teste de carga;
   4. provedor de hospedagem **não escolhido** (decisão do responsável — checklist operacional em [production-checklist.md](production-checklist.md)).
+
+## 10. Etapa Pós-Roadmap 01 (Frontend E2E e Acessibilidade)
+
+> Registro da **Etapa Pós-Roadmap 01**: melhoria pós-roadmap cujo objetivo era tratar os findings P2 da homologação — sobretudo a ressalva 2 da §9.4 / §9.3 ("UI em browser e a11y **NOT VERIFIED**"). As seções §1–§9 permanecem **intactas** como registro histórico do Prompt 17/18; nada nelas foi reescrito. Escopo da etapa: correções de acessibilidade no frontend, suíte E2E Playwright e documentação — ver [frontend-e2e.md](frontend-e2e.md) para execução operacional da suíte.
+
+### 10.1 Correções de acessibilidade aplicadas
+
+| Finding | Correção | Evidência |
+| --- | --- | --- |
+| **A11Y-01** — foco invisível por teclado | anel `focus-visible` no lugar do `focus:border-(--accent) focus:outline-none` | **68** ocorrências corrigidas; protegido por 2 testes E2E (`focus-visible.spec.ts`) |
+| **A11Y-02** — alvos de toque abaixo de 44 px | `min-h-[44px]` em elementos interativos | **137** ocorrências; medido em browser por `touch-targets.spec.ts` (3 testes) |
+| **A11Y-03** — animação ignorando preferência | bloco `@media (prefers-reduced-motion: reduce)` em `globals.css` | transições → ~0,01 ms e `scroll-behavior` → `auto` verificados em browser (`reduced-motion.spec.ts`, 2 testes) |
+| **Contraste** | tokens de cor ajustados | `--muted` → `#cbd5e1`, `--destructive` → `#f87171` (light + dark) |
+| **Status de carregamento** | anunciadores acessíveis nos loadings | `role="status"` em **12** loadings |
+
+### 10.2 E2E de navegador (Playwright)
+
+| Item | Evidência |
+| --- | --- |
+| Dependência | `@playwright/test@1.64.0` (devDependency) + config em `frontend/playwright.config.ts` (`testDir ./e2e`, `baseURL :3000`, `channel: "chrome"`, `retries: 1`, `workers: 2`) |
+| Suíte | **8 specs / 14 testes** em `frontend/e2e/` (auth, a11y, orgs, projects); scripts `test:e2e`, `test:e2e:headed`, `test:e2e:ui` |
+| Execução | **14/14** em execução única; **42/42** estável com `npx playwright test --retries=0 --repeat-each=3` |
+| Dados | usuários descartáveis via `/register` (`e2e-…@test.local`), senha fixture `SentinelE2e123`; CSRF/CORS/auth **não** desabilitados |
+| Evidência visual | 8 screenshots desktop/mobile versionados em `frontend/e2e/screenshots/` |
+| Documentação | [frontend-e2e.md](frontend-e2e.md) — pré-requisitos, execução, estrutura, limitações |
+
+### 10.3 Findings restantes (ressalvas aceitas — P2)
+
+| Finding | Decisão |
+| --- | --- |
+| Checkboxes com `h-4 w-4` abaixo de 44 px | **aceito** — 2 ocorrências, exceção justificada no escopo da etapa (fora do alvo de correção do A11Y-02, que tratou os `min-h-[44px]`) |
+| `channel: "chrome"` na config E2E | **aceito** — reprodutibilidade (usa o Chrome do sistema) vs. não baixar browser empacotado; versão do browser não fixada pelo Playwright |
+| Screenshots versionados no repositório | **aceito** — 8 PNGs como artefato de revisão da etapa, regeneráveis via `node e2e/capture-screenshots.mjs` |
+| Bug pré-existente em `page.tsx` (`MembersPanel`/`ProjectsPanel` com `key={activeOrg.id}`) | **fora do escopo** — não introduzido pela etapa; candidato a issue |
+
+### 10.4 Gate da etapa
+
+| Verificação | Resultado |
+| --- | --- |
+| Backend (`mvn clean test`) | **865/0/0 — BUILD SUCCESS** (inalterado) |
+| Frontend lint / type-check / `npm run test` / build | **exit 0** — **207** testes, lint/type-check/build limpos |
+| Playwright E2E | **14/14**; estabilidade **42/42** (`--repeat-each=3`) |
+
+**APROVADO COM RESSALVAS** — os achados são exatamente os P2 da §10.3; nenhum P0/P1 novo.
+
+### 10.5 Status atualizado dos itens da §9.3
+
+| Item (§9.3) | Antes (P18) | Agora |
+| --- | --- | --- |
+| Acessibilidade (a11y) | **NOT VERIFIED** | **VERIFICADO** — A11Y-01/02/03 + contraste + `role="status"` corrigidos e cobertos por asserções E2E em browser real |
+| E2E de navegador | **NOT VERIFIED** (Playwright inexistente) | **PARCIALMENTE VERIFICADO** — fluxos de auth (registro/login/logout), organização, projeto e a11y rodam em Chrome real contra backend real; **limitações**: só as rotas `/`, `/login`, `/register` (+ painéis na home), dependência de servidores de pé (`3000`/`8080`), sem CI e `channel: "chrome"` (detalhe em [frontend-e2e.md](frontend-e2e.md) §7) |
+
+> A ressalva 2 da §9.4 ("UI em browser e a11y NOT VERIFIED") é **atualizada por esta §10**; as demais ressalvas da §9.4 permanecem válidas.

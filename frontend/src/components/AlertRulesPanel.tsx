@@ -180,7 +180,7 @@ function ThresholdInput({
             })
           }
           disabled={disabled}
-          className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="">Select status…</option>
           {(field.options ?? []).map((option) => (
@@ -209,7 +209,7 @@ function ThresholdInput({
           }
           placeholder={field.placeholder}
           disabled={disabled}
-          className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         {field.unit && (
           <span className="shrink-0 text-xs text-(--muted)" aria-hidden="true">
@@ -545,7 +545,7 @@ export default function AlertRulesPanel({
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           placeholder="Search by name…"
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label htmlFor={`rule-active-filter-${service.id}`} className="sr-only">
           Filter alert rules by activation
@@ -557,7 +557,7 @@ export default function AlertRulesPanel({
             setActiveFilter(event.target.value as RuleActiveFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           <option value="active">Active</option>
@@ -573,7 +573,7 @@ export default function AlertRulesPanel({
             setTypeFilter(event.target.value as AlertRuleType | "all");
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All types</option>
           {RULE_TYPE_OPTIONS.map((type) => (
@@ -592,7 +592,7 @@ export default function AlertRulesPanel({
             setSeverityFilter(event.target.value as AlertSeverity | "all");
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--background) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All severities</option>
           {RULE_SEVERITY_OPTIONS.map((severity) => (
@@ -612,7 +612,7 @@ export default function AlertRulesPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
           >
             Retry
           </button>
@@ -671,7 +671,7 @@ export default function AlertRulesPanel({
                             onClick={() => onToggleDetails(rule)}
                             aria-expanded={isExpanded}
                             disabled={busy}
-                            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                           >
                             {isExpanded ? "Close" : "Details"}
                           </button>
@@ -679,7 +679,7 @@ export default function AlertRulesPanel({
                             type="button"
                             onClick={() => void onToggleActivation(rule)}
                             disabled={!canManage || busy}
-                            className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                           >
                             {togglingId === rule.id
                               ? "Saving…"
@@ -735,7 +735,7 @@ export default function AlertRulesPanel({
                                       }))
                                     }
                                     disabled={busy}
-                                    className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                    className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                   />
                                 </div>
                                 <div className="flex flex-wrap gap-3">
@@ -758,7 +758,7 @@ export default function AlertRulesPanel({
                                         )
                                       }
                                       disabled={busy}
-                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     >
                                       {RULE_TYPE_OPTIONS.map((type) => (
                                         <option key={type} value={type}>
@@ -785,7 +785,7 @@ export default function AlertRulesPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     >
                                       {allowedOperatorsFor(editForm.type).map(
                                         (operator) => (
@@ -818,7 +818,7 @@ export default function AlertRulesPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     >
                                       {RULE_WINDOW_OPTIONS.map((window) => (
                                         <option key={window} value={window}>
@@ -845,7 +845,7 @@ export default function AlertRulesPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     >
                                       {RULE_SEVERITY_OPTIONS.map((severity) => (
                                         <option key={severity} value={severity}>
@@ -880,7 +880,7 @@ export default function AlertRulesPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     >
                                       <option value="">
                                         Service-level (aggregate)
@@ -930,7 +930,7 @@ export default function AlertRulesPanel({
                                   <button
                                     type="submit"
                                     disabled={busy || editForm.name.trim() === ""}
-                                    className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                                    className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                                   >
                                     {saving ? "Saving…" : "Save changes"}
                                   </button>
@@ -941,7 +941,7 @@ export default function AlertRulesPanel({
                                       setEditError(null);
                                     }}
                                     disabled={busy}
-                                    className="rounded-md border border-(--border) px-3 py-2 text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    className="rounded-md border border-(--border) px-4 py-3 min-h-[44px] text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                                   >
                                     Close
                                   </button>
@@ -980,7 +980,7 @@ export default function AlertRulesPanel({
                 type="button"
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
                 disabled={page === 0 || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Previous
               </button>
@@ -988,7 +988,7 @@ export default function AlertRulesPanel({
                 type="button"
                 onClick={() => setPage((current) => current + 1)}
                 disabled={page + 1 >= totalPages || busy}
-                className="rounded-md border border-(--border) px-3 py-1.5 text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
               >
                 Next
               </button>
@@ -996,7 +996,7 @@ export default function AlertRulesPanel({
           </div>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-(--muted)">Loading alert rules…</p>
+        <p className="mt-3 text-sm text-(--muted)" role="status">Loading alert rules…</p>
       )}
 
       {/* Feedback de sucesso/falha de ações sobre a lista */}
@@ -1039,7 +1039,7 @@ export default function AlertRulesPanel({
                 }
                 placeholder="Availability below 99.9"
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
             </div>
           </div>
@@ -1061,7 +1061,7 @@ export default function AlertRulesPanel({
                   )
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 {RULE_TYPE_OPTIONS.map((type) => (
                   <option key={type} value={type}>
@@ -1087,7 +1087,7 @@ export default function AlertRulesPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 {allowedOperatorsFor(createForm.type).map((operator) => (
                   <option key={operator} value={operator}>
@@ -1113,7 +1113,7 @@ export default function AlertRulesPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 {RULE_WINDOW_OPTIONS.map((window) => (
                   <option key={window} value={window}>
@@ -1139,7 +1139,7 @@ export default function AlertRulesPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 {RULE_SEVERITY_OPTIONS.map((severity) => (
                   <option key={severity} value={severity}>
@@ -1174,7 +1174,7 @@ export default function AlertRulesPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 <option value="">Service-level (aggregate)</option>
                 {monitors.map((monitor) => (
@@ -1216,7 +1216,7 @@ export default function AlertRulesPanel({
             <button
               type="submit"
               disabled={busy || createForm.name.trim() === ""}
-              className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {creating ? "Creating…" : "Create alert rule"}
             </button>

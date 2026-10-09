@@ -69,7 +69,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none"
+              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
             />
           </div>
 
@@ -85,7 +85,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-white placeholder:text-(--muted) focus:border-(--accent) focus:outline-none"
+              className="w-full rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
             />
           </div>
 
@@ -101,7 +101,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 w-full rounded-md bg-(--accent) px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            className="mt-2 w-full rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
@@ -109,14 +109,14 @@ export default function LoginPage() {
 
         <p className="mt-4 text-center text-sm text-(--muted)">
           No account yet?{" "}
-          <Link href="/register" className="text-(--accent) hover:underline">
+          <Link href="/register" className="px-3 py-2.5 min-h-[44px] inline-flex items-center text-(--accent) hover:underline">
             Create one
           </Link>
         </p>
       </div>
 
       <p className="mt-4 text-sm">
-        <Link href="/" className="text-(--muted) hover:text-white">
+        <Link href="/" className="px-3 py-2.5 min-h-[44px] inline-flex items-center text-(--muted) hover:text-white">
           ← Back to home
         </Link>
       </p>

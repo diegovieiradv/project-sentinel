@@ -458,7 +458,7 @@ export default function IncidentDetail({
                 setStatusTarget(event.target.value as IncidentStatus | "")
               }
               disabled={busy}
-              className="rounded-md border border-(--border) bg-(--card) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+              className="rounded-md border border-(--border) bg-(--card) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             >
               <option value="">Select status…</option>
               {statusOptions.map((option) => (
@@ -471,7 +471,7 @@ export default function IncidentDetail({
           <button
             type="submit"
             disabled={busy || !statusValid}
-            className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {changing ? "Saving…" : "Change status"}
           </button>
@@ -508,7 +508,7 @@ export default function IncidentDetail({
                 setDraft((form) => ({ ...form, title: event.target.value }))
               }
               disabled={busy}
-              className="rounded-md border border-(--border) bg-(--card) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+              className="rounded-md border border-(--border) bg-(--card) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -529,7 +529,7 @@ export default function IncidentDetail({
               }
               rows={3}
               disabled={busy}
-              className="rounded-md border border-(--border) bg-(--card) px-3 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+              className="rounded-md border border-(--border) bg-(--card) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
             <p className="text-xs text-(--muted)">
               Clearing the field removes the description.
@@ -552,7 +552,7 @@ export default function IncidentDetail({
                 }))
               }
               disabled={busy}
-              className="rounded-md border border-(--border) bg-(--card) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+              className="rounded-md border border-(--border) bg-(--card) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             >
               {INCIDENT_SEVERITY_OPTIONS.map((severity) => (
                 <option key={severity} value={severity}>
@@ -565,7 +565,7 @@ export default function IncidentDetail({
             <button
               type="submit"
               disabled={busy || !dirty || draft.title.trim() === ""}
-              className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
@@ -615,7 +615,7 @@ export default function IncidentDetail({
                     type="button"
                     onClick={() => void onUnlinkAlert(alert.id)}
                     disabled={busy}
-                    className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                    className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
                   >
                     {unlinkingId === alert.id ? "Removing…" : "Unlink"}
                   </button>
@@ -639,7 +639,7 @@ export default function IncidentDetail({
                 value={linkTarget}
                 onChange={(event) => setLinkTarget(event.target.value)}
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--card) px-2 py-2 text-sm text-white focus:border-(--accent) focus:outline-none disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--card) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 <option value="">
                   {linkableAlerts.length === 0
@@ -658,7 +658,7 @@ export default function IncidentDetail({
               type="button"
               onClick={() => void onLinkAlert()}
               disabled={busy || linkTarget === ""}
-              className="rounded-md bg-(--accent) px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {linking ? "Linking…" : "Link alert"}
             </button>
