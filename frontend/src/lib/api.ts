@@ -370,28 +370,41 @@ export async function ensureCsrfToken(): Promise<string> {
 
   // Cookie não existe — tenta materializar fazendo uma requisição que o backend
   // responde com o set-cookie XSRF-TOKEN (todos os endpoints MVC o emitem, inclusive /health).
-  const res = await fetch(`${API_URL}/api/v1/health`, {
-    cache: "no-store",
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-    },
-  });
+  // Timeout (FE-01): sem resposta não há token — o erro vira 408 e o formulário
+  // libera o botão em vez de ficar em loading (o XSRF é precavido no retry).
+  const timeout = startRequestTimeout();
+  try {
+    const res = await fetch(`${API_URL}/api/v1/health`, {
+      cache: "no-store",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: timeout.signal,
+    });
 
-  if (!res.ok) {
-    throw new Error(
-      `Could not obtain XSRF-TOKEN: health check failed (HTTP ${res.status})`
-    );
+    if (!res.ok) {
+      throw new Error(
+        `Could not obtain XSRF-TOKEN: health check failed (HTTP ${res.status})`
+      );
+    }
+
+    // Após o fetch o cookie acabou de ser setado — relê `document.cookie` FRESCO
+    // (o snapshot capturado antes do fetch é anterior ao Set-Cookie e nunca o conteria).
+    const issued = readXsrfToken();
+    if (!issued) {
+      throw new Error("XSRF-TOKEN cookie not found after health check");
+    }
+
+    return issued;
+  } catch (err) {
+    if (timeout.signal.aborted) {
+      throw timeoutError("/api/v1/health");
+    }
+    throw err;
+  } finally {
+    timeout.cancel();
   }
-
-  // Após o fetch o cookie acabou de ser setado — relê `document.cookie` FRESCO
-  // (o snapshot capturado antes do fetch é anterior ao Set-Cookie e nunca o conteria).
-  const issued = readXsrfToken();
-  if (!issued) {
-    throw new Error("XSRF-TOKEN cookie not found after health check");
-  }
-
-  return issued;
 }
 
 /**
@@ -408,82 +421,144 @@ function defaultInit(): RequestInit {
 }
 
 /**
+ * Timeout padrão de TODA requisição, em ms (FE-01 — Hardening).
+ *
+ * Sem teto, uma API que não responde deixa a tela em `loading` para sempre
+ * (spinner infinito, botão desabilitado sem saída). 15s é generoso para o pior
+ * caso real da API e curto o bastante para o usuário ver a mensagem de erro e o
+ * botão Retry que já existem nos painéis.
+ */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * Mensagem canônica do timeout — fonte única usada tanto pelo `ApiError 408`
+ * quanto pelo painel de health (o cliente nunca monta uma frase própria).
+ */
+export const REQUEST_TIMEOUT_MESSAGE = `Request timed out after ${
+  REQUEST_TIMEOUT_MS / 1000
+}s. Please try again.`;
+
+/**
+ * Arma o timeout de requisição com `AbortController` + `setTimeout` e devolve
+ * `cancel()` para o `finally` (nenhum timer sobrevive à chamada).
+ *
+ * `AbortController`+`setTimeout` em vez de `AbortSignal.timeout` por
+ * compatibilidade: funciona em qualquer alvo/browserslist (o projeto não
+ * declara `browserslist`) e é observável em teste (fake timers) — o
+ * `AbortSignal.timeout` usa timer interno, não injetável.
+ *
+ * O aborto cobre conexão E leitura do corpo (`res.text()`), onde uma resposta
+ * a gotejamento também poderia prender a chamada.
+ */
+function startRequestTimeout(): { signal: AbortSignal; cancel: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return { signal: controller.signal, cancel: () => clearTimeout(timer) };
+}
+
+/**
+ * Aborto do NOSSO timeout vira `ApiError` do fluxo de erro existente
+ * (mensagem + Retry manual já presentes nos painéis). `408` foi escolhido por
+ * não colidir com nenhum status tratado hoje: `401` derruba a sessão
+ * (`isUnauthorized`), `403`/`409` têm tratamento próprio nos formulários.
+ */
+function timeoutError(path: string): ApiError {
+  return new ApiError(408, "REQUEST_TIMEOUT", REQUEST_TIMEOUT_MESSAGE, path);
+}
+
+/**
  * Fetch aprimorado que:
  * - Injeta `Authorization: Bearer <token>` quando há token em memória.
  * - Injeta `X-XSRF-TOKEN` em métodos não-safe (POST PUT DELETE PATCH) usando o valor de `document.cookie`.
  * - Mantém `credentials: "include"` (refresh cookie enviado automaticamente pelo navegador).
+ * - Tem timeout (FE-01): conexão + leitura do corpo nunca ficam penduradas.
  */
 async function apiFetch<T>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
-  const headers = {
-    ...defaultInit().headers,
-    ...init.headers,
-  } as Record<string, string>;
+  // Timeout nosso, a menos que o chamador já controle a requisição via signal.
+  const timeout = init.signal ? null : startRequestTimeout();
+  const requestInit: RequestInit = timeout ? { ...init, signal: timeout.signal } : init;
 
-  // Injeta Authorization Bearer quando há token em memória
-  const token = getAccessToken();
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  try {
+    const headers = {
+      ...defaultInit().headers,
+      ...requestInit.headers,
+    } as Record<string, string>;
 
-  // Injeta X-XSRF-TOKEN para métodos não-safe (POST, PUT, DELETE, PATCH)
-  const method = (init.method || "GET").toUpperCase();
-  if (method !== "GET" && method !== "HEAD") {
-    // Garante que o token CSRF está disponível
-    const xsrfToken = await ensureCsrfToken();
-    headers["X-XSRF-TOKEN"] = xsrfToken;
-  }
-
-  // Injeta X-Organization-Id apenas quando o path NÃO já carrega a org.
-  // O `TenantInterceptor` do backend trata o path como fonte principal e responde
-  // 404 quando path e header divergem — enviar o header ao lado de um {organizationId}
-  // diferente da org ativa abriria esse 404. Assim o header fica reservado para os
-  // endpoints tenant-scoped SEM org no path (complementar/futuro) e nunca conflita
-  // com os atuais (`GET/POST /organizations` não são @TenantScoped e o ignoram).
-  const orgId = getOrganizationId();
-  const pathHasOrganization = /\/api\/v1\/organizations\/[^/?]+/.test(path);
-  if (orgId && !pathHasOrganization) {
-    headers["X-Organization-Id"] = orgId;
-  }
-
-  const res = await fetch(`${API_URL}${path}`, {
-    ...defaultInit(),
-    ...init,
-    headers,
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    let body: ApiErrorBody | null = null;
-    try {
-      body = (await res.json()) as ApiErrorBody;
-    } catch {
-      // corpo não-JSON (ex.: 502 de proxy) — cai no fallback abaixo
+    // Injeta Authorization Bearer quando há token em memória
+    const token = getAccessToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
-    // 401 = sessão inválida/expirada em QUALQUER chamada → avisa os ouvintes
-    // (AuthStatus limpa o token e assume estado anônimo).
-    if (res.status === 401 && typeof window !== "undefined") {
-      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
-    }
-    throw new ApiError(
-      res.status,
-      body?.code ?? "UNKNOWN",
-      body?.message ?? `Request failed (HTTP ${res.status})`,
-      body?.path
-    );
-  }
 
-  // 204 (DELETE de membro) e respostas sem corpo não têm JSON a parsear.
-  if (res.status === 204) {
-    return undefined as T;
+    // Injeta X-XSRF-TOKEN para métodos não-safe (POST, PUT, DELETE, PATCH)
+    const method = (requestInit.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      // Garante que o token CSRF está disponível
+      const xsrfToken = await ensureCsrfToken();
+      headers["X-XSRF-TOKEN"] = xsrfToken;
+    }
+
+    // Injeta X-Organization-Id apenas quando o path NÃO já carrega a org.
+    // O `TenantInterceptor` do backend trata o path como fonte principal e responde
+    // 404 quando path e header divergem — enviar o header ao lado de um {organizationId}
+    // diferente da org ativa abriria esse 404. Assim o header fica reservado para os
+    // endpoints tenant-scoped SEM org no path (complementar/futuro) e nunca conflita
+    // com os atuais (`GET/POST /organizations` não são @TenantScoped e o ignoram).
+    const orgId = getOrganizationId();
+    const pathHasOrganization = /\/api\/v1\/organizations\/[^/?]+/.test(path);
+    if (orgId && !pathHasOrganization) {
+      headers["X-Organization-Id"] = orgId;
+    }
+
+    const res = await fetch(`${API_URL}${path}`, {
+      ...defaultInit(),
+      ...requestInit,
+      headers,
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      let body: ApiErrorBody | null = null;
+      try {
+        body = (await res.json()) as ApiErrorBody;
+      } catch {
+        // corpo não-JSON (ex.: 502 de proxy) — cai no fallback abaixo
+      }
+      // 401 = sessão inválida/expirada em QUALQUER chamada → avisa os ouvintes
+      // (AuthStatus limpa o token e assume estado anônimo).
+      if (res.status === 401 && typeof window !== "undefined") {
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      }
+      throw new ApiError(
+        res.status,
+        body?.code ?? "UNKNOWN",
+        body?.message ?? `Request failed (HTTP ${res.status})`,
+        body?.path
+      );
+    }
+
+    // 204 (DELETE de membro) e respostas sem corpo não têm JSON a parsear.
+    if (res.status === 204) {
+      return undefined as T;
+    }
+    const raw = await res.text();
+    if (!raw) {
+      return undefined as T;
+    }
+    return JSON.parse(raw) as T;
+  } catch (err) {
+    // Só o NOSSO timer aborta `timeout.signal` — um signal vindo do chamador
+    // mantém a semântica original dele. Aborts de corpo/leitura caem aqui também.
+    if (timeout && timeout.signal.aborted) {
+      throw timeoutError(path);
+    }
+    throw err;
+  } finally {
+    timeout?.cancel();
   }
-  const raw = await res.text();
-  if (!raw) {
-    return undefined as T;
-  }
-  return JSON.parse(raw) as T;
 }
 
 /** GET /api/v1/health → status do backend. */
@@ -491,12 +566,16 @@ export async function checkHealth(): Promise<{
   status: "up" | "down" | "unreachable";
   error?: string;
 }> {
+  // Timeout (FE-01): o health check é o "estado geral" da tela — uma resposta
+  // pendurada aqui também deixaria o indicador em eternos loading.
+  const timeout = startRequestTimeout();
   try {
     const res = await fetch(`${API_URL}/api/v1/health`, {
       cache: "no-store",
       headers: {
         Accept: "application/json",
       },
+      signal: timeout.signal,
     });
 
     if (!res.ok) {
@@ -524,10 +603,16 @@ export async function checkHealth(): Promise<{
 
     return { status: mapped };
   } catch (err) {
+    // Nosso timeout → mensagem canônica do FE-01 (mesma do `ApiError 408`).
+    if (timeout.signal.aborted) {
+      return { status: "unreachable", error: REQUEST_TIMEOUT_MESSAGE };
+    }
     if (err instanceof Error) {
       return { status: "unreachable", error: err.message };
     }
     return { status: "unreachable", error: String(err) };
+  } finally {
+    timeout.cancel();
   }
 }
 

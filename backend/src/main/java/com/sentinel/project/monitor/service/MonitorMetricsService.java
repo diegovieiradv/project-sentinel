@@ -53,6 +53,20 @@ import org.springframework.transaction.annotation.Transactional;
  * produção, relógio controlado nos testes) — nunca {@code Instant.now()}
  * direto, que tornaria o teste da janela não-determinístico.</p>
  *
+ * <p><b>Fórmula única — nunca média de percentuais nem média de médias
+ * (Prompt 17 / PERF-12):</b> as agregações vêm do banco como CONTAGENS
+ * brutas ({@code count(*) FILTER}, {@code avg/min/max FILTER} — ver
+ * {@code MonitorCheckRepository.summaryByService}/{@code summaryByProject},
+ * sempre UMA linha e sem {@code GROUP BY}) e as taxas são calculadas UMA vez
+ * aqui, em {@link #toSummary}, sobre essas contagens somadas. A disponibilidade
+ * de um projeto é a dos CHECKS somados do projeto — nunca a média das
+ * disponibilidades dos serviços, que daria o mesmo peso a um serviço com 3
+ * checks e outro com 3000. Idem a latência: o {@code avg} do banco varre as
+ * linhas da janela, não as médias de buckets nem de serviços. Denominador
+ * zero devolve {@code null} ("sem dado"), nunca 0 implícito. A mesma política
+ * está escrita em {@code DashboardQueryService} e em {@code docs/dashboard.md}
+ * — este é o ponto onde ela é IMPLEMENTADA.</p>
+ *
  * <p><b>Ordenação da cadeia × range:</b> a cadeia do tenant roda PRIMEIRO
  * (404 genérico) e só depois o parâmetro {@code range} é validado (400) —
  * mesma ordem contrato dos prompts anteriores (recurso inexistente não é

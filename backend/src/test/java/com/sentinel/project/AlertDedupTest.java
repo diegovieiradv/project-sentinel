@@ -227,6 +227,70 @@ class AlertDedupTest extends AbstractAlertEngineIntegrationTest {
                 .hasSize(2);
     }
 
+    // --- PERF-03: LIMIT 1 no pré-check --------------------------------------
+
+    /**
+     * PERF-03: o pré-check do engine precisa devolver UMA linha mesmo com
+     * DUAS linhas compatíveis da mesma regra, e nunca estourar
+     * {@code IncorrectResultSizeDataAccessException}.
+     *
+     * <p>O cenário é legítimo e corriqueiro: disparou → resolveu → disparou
+     * de novo → resolveu. O índice parcial {@code uq_alerts_open_rule} da V10
+     * cobre APENAS {@code status = 'FIRING'}, então as duas linhas
+     * {@code RESOLVED} coexistem sem violar nada. Um {@code @Query} com
+     * {@code Optional<Alert>} e sem limite encontraria as DUAS e lançaria —
+     * quebrando o caminho de resolução por regra, chamado a cada ciclo. É
+     * para isso que o método é derived limiting
+     * ({@code findFirstByAlertRuleIdAndStatus}): o {@code setMaxRows(1)}
+     * nasce na própria query.</p>
+     */
+    @Test
+    void perf03_duas_linhas_resolved_da_mesma_regra_nunca_estouram_o_pre_check()
+            throws Exception {
+        Scene scene = newScene("alert-dedup-limit", "Org AlertEngine Limit");
+        String ruleId = fireOnce(scene);
+        String monitorId = monitorIdOf(scene);
+        UUID ruleUuid = UUID.fromString(ruleId);
+
+        // janela só com SUCCESS → o 1º alerta resolve (AUTO)
+        clearTargetFailures(monitorId);
+        evaluate(scene.serviceId());
+
+        // a condição volta → UM NOVO alerta nasce (reabrir é recriar)
+        seedWindow(scene.serviceId(), monitorId, CheckOutcome.TARGET_FAILURE, 1);
+        evaluate(scene.serviceId());
+
+        // e resolve de novo → a MESMA regra agora tem DUAS linhas RESOLVED
+        clearTargetFailures(monitorId);
+        evaluate(scene.serviceId());
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM alerts"
+                        + " WHERE alert_rule_id = ? AND status = 'RESOLVED'",
+                Integer.class, ruleUuid))
+                .as("premissa: duas linhas RESOLVED da mesma regra")
+                .isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM alerts"
+                        + " WHERE alert_rule_id = ? AND status = 'FIRING'",
+                Integer.class, ruleUuid))
+                .isZero();
+
+        assertThat(alertRepository.findFirstByAlertRuleIdAndStatus(ruleUuid, AlertStatus.RESOLVED))
+                .as("derived limiting devolve UMA linha, nunca lança por tamanho")
+                .isPresent();
+        assertThat(alertRepository.findFirstByAlertRuleIdAndStatus(ruleUuid, AlertStatus.FIRING))
+                .as("nenhum aberto: as duas já foram resolvidas")
+                .isEmpty();
+    }
+
+    /** Janela 100% saudável: só ficam os checks SUCCESS do monitor. */
+    private void clearTargetFailures(String monitorId) {
+        jdbcTemplate.update(
+                "DELETE FROM monitor_checks WHERE monitor_id = ? AND outcome = 'TARGET_FAILURE'",
+                UUID.fromString(monitorId));
+    }
+
     // --- P2-1 (revisão): concorrência REAL — N threads, exatamente 1 --------
 
     /**

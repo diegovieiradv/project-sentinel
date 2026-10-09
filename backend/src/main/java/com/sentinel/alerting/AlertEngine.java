@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import com.sentinel.error.IntegrityViolations;
 import com.sentinel.project.alert.automation.AlertPostEvaluationHook;
 import com.sentinel.project.alert.model.Alert;
 import com.sentinel.project.alert.model.AlertResolutionReason;
@@ -72,6 +73,14 @@ import org.springframework.stereotype.Component;
 public class AlertEngine {
 
     private static final Logger log = LoggerFactory.getLogger(AlertEngine.class);
+
+    /**
+     * Índice parcial único da V10 ({@code WHERE status = 'FIRING'}) — a
+     * assinatura da corrida benigna entre dois ciclos que tentam abrir o
+     * MESMO alerta. Comparado contra a cadeia de causas, nunca só contra a
+     * mensagem de topo (ver {@link IntegrityViolations}).
+     */
+    private static final String OPEN_ALERT_RULE_CONSTRAINT = "uq_alerts_open_rule";
 
     private final ServiceRepository serviceRepository;
     private final AlertRuleRepository alertRuleRepository;
@@ -176,9 +185,19 @@ public class AlertEngine {
             }
         }
         catch (DataIntegrityViolationException ex) {
-            // corrida benigna: outro ciclo já criou o alerta desta regra
-            log.debug("concurrent alert creation deduplicated serviceId={} ruleId={}",
-                    ctx.serviceId(), rule.getId());
+            if (IntegrityViolations.isUniqueConstraintViolation(ex, OPEN_ALERT_RULE_CONSTRAINT)) {
+                // Corrida benigna: outro ciclo abriu o MESMO alerta primeiro.
+                // A regra não precisa de dois alertas abertos — não é defeito.
+                log.debug("concurrent alert creation deduplicated serviceId={} ruleId={}",
+                        ctx.serviceId(), rule.getId());
+            }
+            else {
+                // NÃO é a corrida que conhecemos: violação real (CHECK, NOT
+                // NULL, outra constraint). É defeito — sobe como ERROR, com
+                // mensagem limpa de DETAIL/HINT do banco.
+                log.error("data integrity violation (non-concurrent) serviceId={} ruleId={} message={}",
+                        ctx.serviceId(), rule.getId(), IntegrityViolations.safeMessage(ex));
+            }
         }
         catch (RuntimeException ex) {
             log.error("alert lifecycle failed serviceId={} ruleId={}",

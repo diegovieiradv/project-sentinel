@@ -80,6 +80,7 @@ public class MonitoringDispatcher {
     private final MonitorCheckRecorder recorder;
     private final OperationalStateEvaluator evaluator;
     private final AlertTrigger alertTrigger;
+    private final DueTracker dueTracker;
     private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
 
     private final AtomicLong dispatchedCount = new AtomicLong();
@@ -91,11 +92,13 @@ public class MonitoringDispatcher {
             HttpMonitorExecutor monitorExecutor,
             MonitorCheckRecorder recorder,
             OperationalStateEvaluator evaluator,
-            AlertTrigger alertTrigger) {
+            AlertTrigger alertTrigger,
+            DueTracker dueTracker) {
         this.monitorExecutor = monitorExecutor;
         this.recorder = recorder;
         this.evaluator = evaluator;
         this.alertTrigger = alertTrigger;
+        this.dueTracker = dueTracker;
         this.taskExecutor = createTaskExecutor(properties);
     }
 
@@ -132,7 +135,7 @@ public class MonitoringDispatcher {
         }
         try {
             taskExecutor.execute(new MonitorExecutionTask(
-                    monitor, monitorExecutor, this, recorder, evaluator, alertTrigger));
+                    monitor, monitorExecutor, this, recorder, evaluator, alertTrigger, dueTracker));
             dispatchedCount.incrementAndGet();
             return DispatchOutcome.ACCEPTED;
         }

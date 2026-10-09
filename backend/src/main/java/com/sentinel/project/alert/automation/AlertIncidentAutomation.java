@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.sentinel.error.IntegrityViolations;
 import com.sentinel.project.alert.model.Alert;
 import com.sentinel.project.alert.model.AlertRule;
 import com.sentinel.project.alert.model.AlertStatus;
@@ -74,10 +75,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li><b>correlação (P1-2)</b> — dois ciclos simultâneos leem "nenhum
  *       incidente aberto" e os dois tentam criar: o índice parcial derruba o
  *       perdedor com {@link DataIntegrityViolationException}. Aqui isso vira
- *       UM retry numa transação nova — a releitura enxerga o incidente já
- *       comitado pelo vencedor e o perdedor só vincula (caminho
- *       "reutiliza"). Uma tentativa extra basta; se a violação repetir, a
- *       exceção sobe para o caller logar (nunca um loop);</li>
+ *       ATÉ DOIS retries, cada um numa transação nova — a releitura enxerga
+ *       o incidente já comitado pelo vencedor e o perdedor só vincula
+ *       (caminho "reutiliza"). Esgotado o teto, o aviso é {@code WARN} e o
+ *       método RETORNA normalmente: a automação é best-effort (o alerta já
+ *       nasceu e o reconciliador do ciclo seguinte tenta de novo), então uma
+ *       corrida nunca vira exceção para o listener;</li>
  *   <li><b>vínculo (P1-1)</b> — um vínculo humano vence entre a rechecagem e
  *       o {@code UPDATE}: {@code created && !linked} lança
  *       {@link LinkRaceLostException}, a transação inteira (criação +timeline)
@@ -98,6 +101,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class AlertIncidentAutomation {
 
     private static final Logger log = LoggerFactory.getLogger(AlertIncidentAutomation.class);
+
+    /**
+     * Índice parcial único da V12 — a assinatura da corrida benigna de
+     * correlação. Comparado contra a cadeia de causas, nunca só contra a
+     * mensagem de topo (ver {@link IntegrityViolations}).
+     */
+    private static final String AUTO_OPEN_CONSTRAINT = "uq_incidents_auto_open_per_service";
+
+    /** Tentativas de correlação (1 original + 2 retries) — teto, nunca loop. */
+    private static final int MAX_CORRELATION_ATTEMPTS = 3;
 
     private final AlertRepository alertRepository;
     private final IncidentService incidentService;
@@ -130,13 +143,17 @@ public class AlertIncidentAutomation {
      *
      * <p>Falha aqui NUNCA derruba o nascimento do alerta nem o ciclo de
      * avaliação: o listener e o reconciler capturam e logam (o alerta segue
-     * disparado; a reconciliação do ciclo seguinte tenta de novo). As duas
-     * exceções que este método pode lançar são deliberadas:</p>
+     * disparado; a reconciliação do ciclo seguinte tenta de novo). Este
+     * método lança, deliberadamente, apenas:</p>
      *
      * <ul>
-     *   <li>{@link DataIntegrityViolationException} da correlação — engolida
-     *       AQUI dentro por UM retry em transação nova (ver Javadoc da
-     *       classe); só sobe se a segunda tentativa repetir a violação;</li>
+     *   <li>{@link DataIntegrityViolationException} que <b>não</b> seja a
+     *       corrida benigna de correlação (outra constraint, CHECK, NOT
+     *       NULL…) — é defeito, logada como {@code ERROR} com mensagem
+     *       limpa e relançada. A corrida benigna <b>nunca</b> sobe: é
+     *       engolida AQUI dentro por até dois retries em transação nova e,
+     *       no teto, vira {@code WARN} + retorno normal (ver Javadoc da
+     *       classe);</li>
      *   <li>{@link LinkRaceLostException} do vínculo perdido — sobe de
      *       propósito para que o rollback aconteça, e é capturada pelo
      *       caller.</li>
@@ -146,18 +163,40 @@ public class AlertIncidentAutomation {
      * @param alertId   alerta elegível a reconsiderar
      */
     public void automate(UUID serviceId, UUID alertId) {
-        try {
-            writeTransaction.executeWithoutResult(status -> attempt(serviceId, alertId));
-        }
-        catch (DataIntegrityViolationException raced) {
-            // P1-2: perdemos a corrida pelo índice único. O template acima já
-            // executou o ROLLBACK da tentativa inteira (a exceção só sobe
-            // depois do rollback), então esta segunda chamada é uma
-            // transação FRESCA: a releitura enxerga o incidente que o
-            // vencedor já comitou e o caminho vira "reutiliza + vincula".
-            log.debug("automation correlation raced serviceId={} alertId={} — retrying once",
-                    serviceId, alertId);
-            writeTransaction.executeWithoutResult(status -> attempt(serviceId, alertId));
+        for (int tryNumber = 1; tryNumber <= MAX_CORRELATION_ATTEMPTS; tryNumber++) {
+            try {
+                writeTransaction.executeWithoutResult(status -> attempt(serviceId, alertId));
+                return;
+            }
+            catch (DataIntegrityViolationException raced) {
+                if (!IntegrityViolations.isUniqueConstraintViolation(raced, AUTO_OPEN_CONSTRAINT)) {
+                    // NÃO é a corrida que conhecemos: violação real (CHECK,
+                    // NOT NULL, outra constraint). É defeito — loga com
+                    // mensagem limpa de DETAIL/HINT e sobe para o caller.
+                    log.error("automation failed (non-concurrent) serviceId={} alertId={} message={}",
+                            serviceId, alertId, IntegrityViolations.safeMessage(raced));
+                    throw raced;
+                }
+                // P1-2: perdemos a corrida pelo índice único da V12. O
+                // TransactionTemplate acima já executou o ROLLBACK da
+                // tentativa inteira (a exceção só sobe depois do rollback),
+                // então a próxima volta abre transação FRESCA: a releitura
+                // enxerga o incidente que o vencedor já comitou e o caminho
+                // vira "reutiliza + vincula".
+                log.debug("automation correlation raced serviceId={} alertId={} attempt={}",
+                        serviceId, alertId, tryNumber);
+                if (tryNumber == MAX_CORRELATION_ATTEMPTS) {
+                    // Teto atingido: a correlação continua perdendo a corrida
+                    // a cada nova tentativa. NÃO sobe exceção — automação é
+                    // best-effort (o alerta já nasceu; o reconciliador do
+                    // ciclo seguinte tenta de novo) e o teto é justamente o
+                    // que impede de virar loop. Aviso, não erro.
+                    log.warn("automation correlation gave up after {} attempts serviceId={} alertId={}",
+                            MAX_CORRELATION_ATTEMPTS, serviceId, alertId);
+                    return;
+                }
+                // senão: retry implícito na próxima iteração do for
+            }
         }
     }
 

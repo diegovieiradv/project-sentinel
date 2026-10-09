@@ -144,6 +144,59 @@ class AlertParentInactiveTest extends AbstractAlertEngineIntegrationTest {
         assertThat(after.getResolvedAt()).isEqualTo(NOW);
     }
 
+    // --- PERF-01 / PERF-02: resolução em massa -------------------------------
+
+    /**
+     * PERF-01 e PERF-02: a resolução em massa de UM serviço
+     * ({@code resolveOpenForService}) percorre o caminho paginado novo
+     * ({@code Page<Alert>} + {@code Pageable}) e precisa continuar
+     * devolvendo <b>TODOS</b> os alertas abertos.
+     *
+     * <p>Duas regras disparando na mesma janela viram DOIS alertas
+     * {@code FIRING}; ao desativar o serviço, nenhum pode ficar para trás —
+     * perder o segundo por causa do corte de página seria um alerta que
+     * nunca mais resolve (preso em {@code FIRING} até o próximo ciclo).</p>
+     */
+    @Test
+    void criterio75_permite_resolver_todos_os_alertas_abertos_do_servico_de_uma_vez()
+            throws Exception {
+        Scene scene = newScene("alert-parent-bulk", "Org AlertEngine Bulk");
+        String bearer = scene.org().ownerBearer();
+        String monitorId = createMonitor(
+                bearer, scene.org().organizationId(),
+                scene.projectId(), scene.serviceId(), "Monitor lote");
+        createAlertRule(
+                bearer, scene.org().organizationId(),
+                scene.projectId(), scene.serviceId(), "Regra lote A");
+        createAlertRule(
+                bearer, scene.org().organizationId(),
+                scene.projectId(), scene.serviceId(), "Regra lote B");
+        seedWindow(scene.serviceId(), monitorId, CheckOutcome.SUCCESS, 1);
+        seedWindow(scene.serviceId(), monitorId, CheckOutcome.TARGET_FAILURE, 1);
+        evaluate(scene.serviceId());
+
+        List<Alert> open = openAlertsOf(scene.serviceId());
+        assertThat(open)
+                .as("duas regras na mesma janela → dois alertas FIRING")
+                .hasSize(2)
+                .allMatch(alert -> alert.getStatus() == AlertStatus.FIRING);
+
+        changeActivation(
+                bearer,
+                scene.org().organizationId(), scene.projectId(),
+                scene.serviceId(), false);
+
+        List<Alert> after = alertsOf(scene.serviceId());
+        assertThat(after)
+                .as("nenhum alerta se perde no caminho paginado")
+                .hasSize(2);
+        assertThat(after)
+                .allMatch(alert -> alert.getStatus() == AlertStatus.RESOLVED)
+                .allMatch(alert -> alert.getResolutionReason()
+                        == AlertResolutionReason.PARENT_INACTIVE)
+                .allMatch(alert -> alert.getResolvedAt().equals(NOW));
+    }
+
     // --- #78: estado congelado — nada novo é avaliado ------------------------
 
     @Test

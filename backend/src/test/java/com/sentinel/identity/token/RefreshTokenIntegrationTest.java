@@ -9,7 +9,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import com.sentinel.identity.JwtProperties;
 
@@ -161,6 +168,44 @@ class RefreshTokenIntegrationTest {
         return revoked;
     }
 
+    /** Conta os refresh tokens ainda ativos (não revogados) de um usuário. */
+    private Integer activeTokensOf(String email) {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id"
+                        + " WHERE u.email = ? AND rt.revoked = false",
+                Integer.class, email);
+    }
+
+    /**
+     * Apresenta o MESMO refresh token em {@code attempts} requisições simultâneas
+     * e devolve os resultados na ordem das threads.
+     */
+    private List<MvcResult> refreshConcurrently(Cookie refresh, int attempts) throws Exception {
+        // CSRF materializado ANTES das threads (happen-before do latch)
+        csrf();
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(attempts);
+        try {
+            List<Future<MvcResult>> futures = new ArrayList<>(attempts);
+            for (int i = 0; i < attempts; i++) {
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    return mockMvc.perform(postCsrf("/api/v1/auth/refresh").cookie(refresh))
+                            .andReturn();
+                }));
+            }
+            start.countDown();
+            List<MvcResult> results = new ArrayList<>(attempts);
+            for (Future<MvcResult> future : futures) {
+                results.add(future.get(30, TimeUnit.SECONDS));
+            }
+            return results;
+        }
+        finally {
+            pool.shutdownNow();
+        }
+    }
+
     // --- emissão ----------------------------------------------------------
 
     @Test
@@ -262,11 +307,49 @@ class RefreshTokenIntegrationTest {
         MvcResult afterReuse = refreshExpecting(401, rotated);
         assertThat(responseBody(afterReuse).get("code")).isEqualTo(RefreshTokenService.REVOKED_CODE);
 
-        Integer activeRows = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id"
-                        + " WHERE u.email = ? AND rt.revoked = false",
-                Integer.class, "reuse@example.com");
-        assertThat(activeRows).isZero();
+        assertThat(activeTokensOf("reuse@example.com"))
+                .as("reuse must revoke every token of that user")
+                .isZero();
+    }
+
+    @Test
+    void concurrentRefreshWithSameCookieElectsExactlyOneWinnerAndNeverTwoActiveTokens()
+            throws Exception {
+        registerAndLogin("conc@example.com", "secret123");
+        Cookie original = login("conc@example.com", "secret123");
+
+        int attempts = 4;
+        List<MvcResult> results = refreshConcurrently(original, attempts);
+
+        // o UPDATE condicional tem UM vencedor; os perdedores caem no caminho
+        // de reuso (token já revogado reapresentado) → 401 REVOKED
+        List<Integer> statuses = new ArrayList<>(attempts);
+        for (MvcResult result : results) {
+            statuses.add(result.getResponse().getStatus());
+        }
+        assertThat(statuses)
+                .as("exactly one rotation may win; every other racer gets 401")
+                .containsExactlyInAnyOrder(200, 401, 401, 401);
+
+        for (MvcResult result : results) {
+            if (result.getResponse().getStatus() == 200) {
+                Map<String, Object> body = responseBody(result);
+                assertThat((String) body.get("accessToken")).isNotBlank();
+                assertThat(refreshCookie(result).getValue())
+                        .as("the winner must receive a rotated cookie")
+                        .isNotEqualTo(original.getValue());
+            }
+            else {
+                assertThat(responseBody(result).get("code"))
+                        .isEqualTo(RefreshTokenService.REVOKED_CODE);
+            }
+        }
+
+        // o token disputado ficou revogado e NUNCA existem dois ativos
+        assertThat(tokenRevoked(original.getValue())).isTrue();
+        assertThat(activeTokensOf("conc@example.com"))
+                .as("concurrent refresh must never leave two active tokens")
+                .isLessThanOrEqualTo(1);
     }
 
     @Test

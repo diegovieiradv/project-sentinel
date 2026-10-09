@@ -1,16 +1,21 @@
 /**
  * Testes unitários do cliente de API (`src/lib/api.ts`) — só as partes puras e
  * críticas: validação de formato UUID da org ativa, ciclo de vida da org ativa
- * (memória + localStorage) e o gatilho de sessão do `apiFetch` (401 vs 403).
+ * (memória + localStorage), o gatilho de sessão do `apiFetch` (401 vs 403) e o
+ * timeout de requisição (FE-01).
  *
  * Ambiente `node` (ver `vitest.config.ts`): sem jsdom. Onde o caminho de
  * produção exige `window`/`localStorage`, o teste injeta um stub mínimo.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  REQUEST_TIMEOUT_MESSAGE,
+  REQUEST_TIMEOUT_MS,
   SESSION_EXPIRED_EVENT,
+  checkHealth,
   clearOrganizationId,
+  ensureCsrfToken,
   getAccessToken,
   getOrganizationId,
   isValidOrganizationId,
@@ -234,5 +239,112 @@ describe("gatilho de sessão do apiFetch (401 vs 403)", () => {
     expect(dispatched).toEqual([]);
     expect(getAccessToken()).toBe("access-token-em-memoria");
     expect(getOrganizationId()).toBe(VALID_UUID);
+  });
+});
+
+describe("timeout de requisição (FE-01)", () => {
+  /** Último `RequestInit` visto pelo `fetch` (para inspecionar o `signal`). */
+  let captured: RequestInit | undefined;
+
+  /** Resposta 200 imediata que registra o `init` recebido. */
+  function stubRecordingFetch(status: number, body: unknown): void {
+    globals.fetch = (_input: unknown, init?: RequestInit) => {
+      captured = init;
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { "content-type": "application/json" },
+        })
+      );
+    };
+  }
+
+  /**
+   * fetch que NUNCA resolve sozinho — só quando o `signal` aborta (uma API
+   * pendurada: exatamente o cenário do FE-01).
+   */
+  function stubHangingFetch(): void {
+    globals.fetch = (_input: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("This operation was aborted", "AbortError"))
+        );
+      });
+  }
+
+  beforeEach(() => {
+    captured = undefined;
+    clearOrganizationId();
+  });
+
+  afterEach(() => {
+    clearOrganizationId();
+    vi.useRealTimers();
+    delete globals.document;
+    globals.fetch = originalFetch;
+    captured = undefined;
+  });
+
+  it("toda chamada sai com signal armado e o timer é cancelado no fim", async () => {
+    vi.useFakeTimers();
+    stubRecordingFetch(200, {
+      id: VALID_UUID,
+      name: "Ada",
+      email: "ada@example.com",
+    });
+
+    const user = await me();
+
+    expect(user.email).toBe("ada@example.com");
+    expect(captured?.signal).toBeInstanceOf(AbortSignal);
+    expect(captured?.signal?.aborted).toBe(false);
+    // cancelado no `finally` — nenhum timer de 15s sobrevive à chamada
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("API pendurada aborta e vira ApiError 408 REQUEST_TIMEOUT", async () => {
+    vi.useFakeTimers();
+    stubHangingFetch();
+
+    const pending = me().catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+    const err = await pending;
+
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(408);
+    expect((err as ApiError).code).toBe("REQUEST_TIMEOUT");
+    expect((err as ApiError).message).toBe(REQUEST_TIMEOUT_MESSAGE);
+    expect((err as ApiError).path).toBe("/api/v1/auth/me");
+    // nenhum timer órfão depois do aborto
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("checkHealth com API pendurada → unreachable com a mensagem canônica", async () => {
+    vi.useFakeTimers();
+    stubHangingFetch();
+
+    const pending = checkHealth();
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+
+    expect(await pending).toEqual({
+      status: "unreachable",
+      error: REQUEST_TIMEOUT_MESSAGE,
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("ensureCsrfToken (materialização do XSRF) também sai com signal", async () => {
+    // `document` mínimo: sem cookie XSRF-TOKEN (força o GET /health do fluxo).
+    globals.document = { cookie: "" };
+    stubRecordingFetch(200, { status: "UP" });
+
+    const err = await ensureCsrfToken().catch((e: unknown) => e);
+
+    // O stub não emite o cookie — o erro ORIGINAL é preservado (não vira 408).
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe(
+      "XSRF-TOKEN cookie not found after health check"
+    );
+    expect(captured?.signal).toBeInstanceOf(AbortSignal);
   });
 });

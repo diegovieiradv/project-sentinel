@@ -162,6 +162,22 @@ public class MonitorCheckRecorder {
      * (quebraria a leitura do histórico), trim e corte em
      * {@value #MAX_MESSAGE_LENGTH} caracteres. Um {@code null} vira string
      * vazia (a coluna é NOT NULL e o executor sempre envia domínio).
+     *
+     * <p><b>Conjunto exato, sem ambiguidade:</b> todo
+     * {@link Character#isISOControl(char)} vira espaço, menos {@code \t}.
+     * Em regex isso é {@code [\p{Cc} && [^\t]]} — C0 ({@code \u0000}–
+     * {@code \u001F}), {@code \u007F} (DEL) e C1 ({@code \u0080}–
+     * {@code \u009F}) são removidos; tabulação não, porque é a única forma
+     * legível de alinhar a mensagem na UI. É também a defesa de
+     * <em>log/terminal injection</em>: {@code ESC} ({@code \u001B}) é ISO
+     * control, então a sequência ANSI que formata/recolhe terminal nunca
+     * chega ao histórico. A substituição é por <b>espaço</b> (não por
+     * remoção contígua): a palavra não se funde com a vizinha e o offset
+     * caindo no meio da mensagem original permanece auditável.</p>
+     *
+     * <p>Não é sanitização de HTML/XSS (esta coluna nunca é renderizada
+     * como markup) nem colapso de espaços múltiplos: a mensagem é texto de
+     * domínio, preservado como escrito.</p>
      */
     static String sanitizeMessage(String raw) {
         if (raw == null) {

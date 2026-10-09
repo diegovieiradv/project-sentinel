@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { register, ApiError } from "@/lib/api";
@@ -12,9 +12,20 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // FE-02 — trava síncrona do duplo submit: `loading` só muda no render
+  // seguinte, enquanto este ref já é lido/escrito no MESMO tick do clique.
+  const submittingRef = useRef(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // FE-02 — guarda de duplo submit: `setLoading(true)` só re-renderiza no
+    // próximo tick, então dois cliques/Enter rápidos disparariam `register()`
+    // duas vezes. `preventDefault` fica antes (senão o form navegaria) e este
+    // `return` impede a segunda chamada antes de tocar na rede; o
+    // `submittingRef` fecha a janela de mesmo tick que `loading` não cobre.
+    if (loading) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -29,6 +40,7 @@ export default function RegisterPage() {
           : "Could not reach the backend. Is it running on port 8080?"
       );
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   }

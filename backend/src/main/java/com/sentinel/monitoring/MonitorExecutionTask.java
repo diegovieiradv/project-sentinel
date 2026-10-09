@@ -35,6 +35,21 @@ import org.slf4j.LoggerFactory;
  * de pé (durabilidade independente) e o estado é recalculado no próximo
  * check.</p>
  *
+ * <p><b>Cancelamento de execução em voo (Prompt 17):</b> um monitor removido
+ * ou desativado no MEIO da checagem não deve ter o resultado persistido nem
+ * avaliado. O sinal é o próprio {@link DueTracker}: a entrada do monitor
+ * some quando o tick chama {@link DueTracker#retainOnly} e o tira do
+ * conjunto de elegíveis. O gate roda UMA vez — DEPOIS da rede e ANTES de
+ * logar, persistir e avaliar — e só cancela quando a entrada JÁ existia no
+ * momento em que a task começou ({@code trackedAtStart}) e sumiu durante a
+ * checagem: "sumiu" é exatamente a perda de elegibilidade. Um monitor
+ * recém-criado ainda não tem horário gravado (o {@code commit} do próprio
+ * tick só acontece depois que o dispatcher ACEITA), então ausência de
+ * entrada é o estado NORMAL dele — não é sinal de cancelamento. Por isso
+ * NÃO existe pré-check antes da rede: entre o submit e o commit existe uma
+ * janela em que a entrada ainda não foi gravada, e um gate ali faria a task
+ * desistir de checagens perfeitamente válidas.</p>
+ *
  * <p><b>Log sem segredo:</b> monitorId, serviceId, desfecho, status HTTP e
  * duração. Nunca corpo, URL com query string, Authorization ou cookie — as
  * exceções registradas aqui são as NOSSAS (infraestrutura), não texto vindo
@@ -50,6 +65,7 @@ final class MonitorExecutionTask implements Runnable {
     private final MonitorCheckRecorder recorder;
     private final OperationalStateEvaluator evaluator;
     private final AlertTrigger alertTrigger;
+    private final DueTracker dueTracker;
 
     MonitorExecutionTask(
             Monitor monitor,
@@ -57,19 +73,33 @@ final class MonitorExecutionTask implements Runnable {
             MonitoringDispatcher dispatcher,
             MonitorCheckRecorder recorder,
             OperationalStateEvaluator evaluator,
-            AlertTrigger alertTrigger) {
+            AlertTrigger alertTrigger,
+            DueTracker dueTracker) {
         this.monitor = monitor;
         this.executor = executor;
         this.dispatcher = dispatcher;
         this.recorder = recorder;
         this.evaluator = evaluator;
         this.alertTrigger = alertTrigger;
+        this.dueTracker = dueTracker;
     }
 
     @Override
     public void run() {
+        // Estado de elegibilidade NO MOMENTO em que a task começa: é a
+        // referência do gate de cancelamento lá embaixo (ver Javadoc).
+        boolean trackedAtStart = dueTracker.isTracked(monitor.getId());
         try {
             MonitorExecutionResult result = executor.execute(monitor);
+
+            if (trackedAtStart && !dueTracker.isTracked(monitor.getId())) {
+                // O monitor saiu do conjunto de elegíveis DURANTE a checagem:
+                // o histórico não é gravado, o estado não é avaliado e nenhum
+                // alerta nasce de uma checagem de um monitor desligado/removido.
+                log.debug("monitor execution cancelled while in flight monitorId={}", monitor.getId());
+                return;
+            }
+
             logResult(result);
             dispatcher.recordResult(result);
             persistAndEvaluate(result);

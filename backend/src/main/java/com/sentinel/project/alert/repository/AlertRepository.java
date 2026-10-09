@@ -75,23 +75,46 @@ public interface AlertRepository extends JpaRepository<Alert, UUID> {
             Pageable pageable);
 
     /**
-     * Alerta ainda ABERTO de UMA regra — pré-check de deduplicação do engine
-     * (o índice parcial UNIQUE da V10 é a linha de defesa sob corrida) e
-     * alvo da resolução por regra (AUTO / RULE_DEACTIVATED).
+     * UM alerta de UMA regra num dado status — pré-check de deduplicação do
+     * engine (o índice parcial UNIQUE da V10 é a linha de defesa sob corrida)
+     * e alvo da resolução por regra (AUTO / RULE_DEACTIVATED).
+     *
+     * <p><b>LIMIT 1 explícito ({@code findFirst}):</b> derived query limiting —
+     * o Spring Data aplica {@code setMaxResults(1)} e o SQL nasce já
+     * limitado, então a assinatura {@code Optional<Alert>} nunca estoura com
+     * {@code IncorrectResultSizeDataAccessException}. Um {@code @Query} sem
+     * limit devolveria TODAS as linhas compatíveis: o índice parcial
+     * {@code uq_alerts_open_rule} da V10 protege apenas as linhas
+     * {@code FIRING}, e nada impede duas linhas {@code RESOLVED} da mesma
+     * regra (disparou, resolveu, disparou de novo) de coexistirem. O método
+     * é genérico no status justamente para não esconder essa armadilha.</p>
      */
-    Optional<Alert> findByAlertRuleIdAndStatus(UUID alertRuleId, AlertStatus status);
+    Optional<Alert> findFirstByAlertRuleIdAndStatus(UUID alertRuleId, AlertStatus status);
 
     /**
      * Alertas em um dado status de um serviço — o engine usa com
      * {@link AlertStatus#FIRING} para dedup/touch/RULE_DEACTIVATED e o
      * lifecycle usa para resolver tudo com {@code PARENT_INACTIVE} quando o
      * serviço é desativado.
+     *
+     * <p><b>Pronta para paginação:</b> a assinatura aceita {@link Pageable},
+     * mas os callers atuais ({@code AlertLifecycleService}) usam
+     * {@code Pageable.unpaged()} e, portanto, <b>não</b> aplicam {@code LIMIT}
+     * nem {@code COUNT} — o bound por linha continua sendo responsabilidade da
+     * query/da regra de negócio.
      */
-    List<Alert> findByServiceIdAndStatus(UUID serviceId, AlertStatus status);
+    Page<Alert> findByServiceIdAndStatus(
+            @Param("serviceId") UUID serviceId, @Param("status") AlertStatus status, Pageable pageable);
 
     /**
      * Alertas abertos de TODOS os serviços de UM projeto — resolução em massa
      * com {@code PARENT_INACTIVE} quando o projeto é desativado.
+     *
+     * <p><b>Pronta para paginação:</b> a assinatura aceita {@link Pageable},
+     * mas o caller produtivo ({@code AlertLifecycleService}) usa
+     * {@code Pageable.unpaged()} e, portanto, <b>não</b> aplica {@code LIMIT}
+     * nem {@code COUNT} — o bound por linha continua sendo responsabilidade da
+     * query/da regra de negócio.
      */
     @Query("""
             SELECT a
@@ -99,8 +122,8 @@ public interface AlertRepository extends JpaRepository<Alert, UUID> {
             WHERE a.service.project.id = :projectId
               AND a.status = :status
             """)
-    List<Alert> findByProjectIdAndStatus(
-            @Param("projectId") UUID projectId, @Param("status") AlertStatus status);
+    Page<Alert> findByProjectIdAndStatus(
+            @Param("projectId") UUID projectId, @Param("status") AlertStatus status, Pageable pageable);
 
     /**
      * Ids das regras com alerta ABERTO num serviço — o engine cruza este

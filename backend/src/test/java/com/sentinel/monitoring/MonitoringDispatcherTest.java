@@ -46,6 +46,12 @@ class MonitoringDispatcherTest {
     private static final String FAST_URL = "https://93.184.216.34/fast";
 
     private final RecordingTransport transport = new RecordingTransport();
+    /**
+     * Compartilhado pelos duplos do teste: o gate de cancelamento da
+     * {@code MonitorExecutionTask} lê EXATAMENTE este mapa (o que o tick
+     * grava/limpa), então o teste precisa de uma única instância.
+     */
+    private final DueTracker dueTracker = new DueTracker();
     private MonitoringDispatcher dispatcher;
 
     @AfterEach
@@ -155,7 +161,7 @@ class MonitoringDispatcherTest {
         };
         MonitoringProperties properties = properties(4, 8);
         dispatcher = new MonitoringDispatcher(
-                properties, exploding, recorder(), evaluator(), AlertTrigger.noop());
+                properties, exploding, recorder(), evaluator(), AlertTrigger.noop(), dueTracker);
         Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
 
         assertThat(dispatcher.tryDispatch(monitor))
@@ -193,7 +199,8 @@ class MonitoringDispatcherTest {
                         url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z")),
                 recorder,
                 evaluator,
-                AlertTrigger.noop());
+                AlertTrigger.noop(),
+                dueTracker);
         Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
 
         assertThat(dispatcher.tryDispatch(monitor))
@@ -230,7 +237,8 @@ class MonitoringDispatcherTest {
                         url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z")),
                 recorder,
                 evaluator,
-                AlertTrigger.noop());
+                AlertTrigger.noop(),
+                dueTracker);
         Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
 
         assertThat(dispatcher.tryDispatch(monitor))
@@ -288,7 +296,7 @@ class MonitoringDispatcherTest {
             }
         };
         dispatcher = new MonitoringDispatcher(
-                properties(4, 8), recording, recorder(), evaluator(), AlertTrigger.noop());
+                properties(4, 8), recording, recorder(), evaluator(), AlertTrigger.noop(), dueTracker);
 
         Monitor slow = MonitorFixtures.monitor(SLOW_URL);
         Monitor fast = MonitorFixtures.monitor(FAST_URL);
@@ -331,6 +339,72 @@ class MonitoringDispatcherTest {
         assertThat(transport.requests).hasSize(2);
     }
 
+    // --- cancelamento de execução em voo (Prompt 17 / RES-01) ---------------
+
+    /**
+     * RES-01: um monitor que <b>sai da elegibilidade no MEIO da checagem</b>
+     * não tem o histórico persistido nem o estado avaliado — e não é
+     * contado como erro interno.
+     *
+     * <p><b>Por que o commit vem ANTES do despacho aqui:</b> em produção o
+     * {@code MonitoringScheduler} grava o horário DEPOIS de o dispatcher
+     * aceitar, então o <i>primeiro</i> tick de um monitor recém-criado ainda
+     * não tem entrada quando a task começa. O que este teste modela é o
+     * caso comum do 2º tick em diante — a entrada do despacho anterior já
+     * está comitada e a task nasce com {@code trackedAtStart = true}, que é
+     * a única condição em que o cancelamento pode ser decidido. Sem essa
+     * entrada o gate não existe: ausência no início é o estado NORMAL de um
+     * monitor novo, não sinal de remoção.</p>
+     *
+     * <p>Sequência: despacho aceito → checagem presa no transporte → o tick
+     * seguinte perde o monitor e o {@code retainOnly} apaga a entrada →
+     * a checagem termina e o gate (pós-rede) descarta o resultado.</p>
+     */
+    @Test
+    void monitorRemovedWhileInFlightIsNotPersistedNorEvaluated() {
+        RecordingCheckRecorder recorder = recorder();
+        RecordingEvaluator evaluator = evaluator();
+        dispatcher = new MonitoringDispatcher(
+                properties(4, 8),
+                new HttpMonitorExecutor(
+                        url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z")),
+                recorder,
+                evaluator,
+                AlertTrigger.noop(),
+                dueTracker);
+
+        Monitor monitor = MonitorFixtures.monitor(MonitorFixtures.PUBLIC_URL);
+        dueTracker.commit(monitor, Instant.parse("2026-03-01T00:00:00Z"));
+        transport.block();
+
+        assertThat(dispatcher.tryDispatch(monitor))
+                .isEqualTo(MonitoringDispatcher.DispatchOutcome.ACCEPTED);
+        transport.awaitEntered();
+        assertThat(dueTracker.isTracked(monitor.getId())).isTrue();
+
+        // no meio da checagem o monitor sai da elegibilidade (desativado /
+        // removido) e o tick apaga o estado de vencimento
+        assertThat(dueTracker.retainOnly(Collections.emptySet()))
+                .as("o retainOnly remove a entrada do monitor")
+                .isEqualTo(1);
+
+        transport.unblock();
+        assertThat(dispatcher.awaitIdle(WAIT)).isTrue();
+
+        assertThat(recorder.recorded)
+                .as("resultado de checagem de monitor desligado não é persistido")
+                .isEmpty();
+        assertThat(evaluator.evaluated)
+                .as("sem histórico novo não há avaliação")
+                .isEmpty();
+        assertThat(dispatcher.internalErrorCount())
+                .as("cancelamento não é erro interno do executor")
+                .isZero();
+        assertThat(dispatcher.inFlightCount())
+                .as("a in-flight é liberada mesmo no caminho cancelado")
+                .isZero();
+    }
+
     // --- apoio --------------------------------------------------------------
 
     /**
@@ -357,7 +431,7 @@ class MonitoringDispatcherTest {
         MonitoringProperties properties = properties(workerCount, queueCapacity);
         HttpMonitorExecutor executor = new HttpMonitorExecutor(
                 url -> { }, transport, () -> Instant.parse("2026-03-01T00:00:00Z"));
-        return new MonitoringDispatcher(properties, executor, recorder(), evaluator(), AlertTrigger.noop());
+        return new MonitoringDispatcher(properties, executor, recorder(), evaluator(), AlertTrigger.noop(), dueTracker);
     }
 
     private static MonitoringProperties properties(int workerCount, int queueCapacity) {

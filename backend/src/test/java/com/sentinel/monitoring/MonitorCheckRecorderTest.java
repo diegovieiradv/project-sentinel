@@ -121,6 +121,46 @@ class MonitorCheckRecorderTest {
         assertThat(MonitorCheckRecorder.sanitizeMessage(null)).isEmpty();
     }
 
+    // --- RES-10: contrato exato do conjunto de controle ---------------------
+
+    /**
+     * RES-10: o contrato de {@link MonitorCheckRecorder#sanitizeMessage} é
+     * exato sobre o que sobra de caractere de controle: o conjunto é
+     * {@code Character.isISOControl(ch) && ch != '\t'}, i.e. os extremos das
+     * três faixas (C0 {@code \u0000}–{@code \u001F}, o {@code \u007F} DEL e
+     * C1 {@code \u0080}–{@code \u009F}) viram espaço, e só a tabulação
+     * sobrevive.
+     *
+     * <p>Duas propriedades importam e estão travadas aqui: a substituição é
+     * <b>por caractere</b> — sem colapso de espaços duplos (os cinco
+     * controles do meio viram exatamente cinco espaços) — e o trim só apara
+     * as pontas, nunca o interior da mensagem.</p>
+     */
+    @Test
+    void controlCharacterBoundariesFromC0ThroughC1BecomeSpacesWhileTabSurvives() {
+        String sanitized = MonitorCheckRecorder.sanitizeMessage(
+                "pre\u0000\u001F\u007F\u0085\u009F\tmid\u0001post");
+
+        // 5 controles → exatamente 5 espaços (um a um); o tab do meio fica
+        assertThat(sanitized).isEqualTo("pre     \tmid post");
+        assertThat(sanitized).doesNotContain(
+                "\u0000", "\u001F", "\u007F", "\u0085", "\u009F", "\u0001");
+        assertThat(sanitized).contains("\t");
+    }
+
+    /**
+     * RES-10: o trim é só de borda. Os controles que cercam a mensagem viram
+     * espaço ANTES do trim e somem junto com ele — o domínio no meio sobrevive
+     * intacto.
+     */
+    @Test
+    void controlCharactersAtBothEdgesAreTrimmedAwayLeavingTheDomainText() {
+        String sanitized = MonitorCheckRecorder.sanitizeMessage(
+                "\u0001  Target responded  \u001F");
+
+        assertThat(sanitized).isEqualTo("Target responded");
+    }
+
     @Test
     void recordingWithoutMonitorIdIsRejectedBeforeTouchingTheDatabase() {
         // repositórios nulos de propósito: a checagem acontece ANTES deles

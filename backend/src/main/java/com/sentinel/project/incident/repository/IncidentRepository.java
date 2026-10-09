@@ -64,6 +64,21 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID> {
     /**
      * Listagem paginada por serviço com os dois filtros opcionais da API.
      *
+     * <p><b>JOIN FETCH da cadeia do tenant (service → project →
+     * organization):</b> o {@code IncidentResponse} lê a árvore inteira
+     * ({@code service.project.organization}) para os três ids de escopo, e
+     * sem o fetch seriam três selects separados POR LINHA da página (N+1).
+     * Como todas as três associações são {@code @ManyToOne} — cardinalidade
+     * "muitos para UM" — nenhuma delas multiplica linhas, então o fetch não
+     * quebra a paginação e o {@code DISTINCT} seria redundante (o derived
+     * count gerado pelo Spring Data remove os {@code join fetch} e devolve a
+     * contagem verdadeira).</p>
+     *
+     * <p><b>{@code Incident} NÃO tem alertRule:</b> o vínculo é pelo lado do
+     * alerta ({@code alerts.incident_id}); o snapshot que a listagem expõe já
+     * mora na própria linha do incidente. Buscar uma associação inexistente
+     * falharia na validação do JPQL e derrubaria todo o bootstrap.</p>
+     *
      * @param serviceId serviço dono (já provado na cadeia do tenant)
      * @param status    filtro opcional por status (OPEN/INVESTIGATING/…)
      * @param severity  filtro opcional por severidade (SEV1–SEV4)
@@ -71,6 +86,9 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID> {
     @Query("""
             SELECT i
             FROM Incident i
+            JOIN FETCH i.service s
+            JOIN FETCH s.project p
+            JOIN FETCH p.organization o
             WHERE i.service.id = :serviceId
               AND (:status IS NULL OR i.status = :status)
               AND (:severity IS NULL OR i.severity = :severity)
@@ -112,6 +130,14 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID> {
      * <p>{@code associatedAlertsCount} é uma subquery correlacionada na
      * PRÓPRIA linha (no máximo {@code limit} linhas): uma consulta por
      * incidente seria N+1 na API.</p>
+     *
+     * <p><b>Custo da subquery correlacionada (risco aceito e documentado):</b>
+     * ela roda por linha devolvida — no máximo {@code limit} vezes (10 no
+     * contrato do painel), nunca N vezes por projeto inteiro — e o índice
+     * {@code idx_alerts_incident} da V11 torna cada contagem uma varredura de
+     * poucas linhas. Trocar por JOIN + GROUP BY inflaria a página inteira só
+     * para contar; a planilha do custo vive no {@code LIMIT :limit} que corta
+     * as linhas ANTES de qualquer contagem.</p>
      *
      * @param projectId projeto já provado dentro do tenant
      * @param limit     máximo de linhas (10 no contrato do painel)

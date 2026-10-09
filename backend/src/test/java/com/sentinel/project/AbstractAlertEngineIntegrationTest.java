@@ -18,6 +18,7 @@ import com.sentinel.project.monitor.model.MonitorCheck;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -122,7 +123,8 @@ public abstract class AbstractAlertEngineIntegrationTest extends AbstractAlertRu
     /** Alertas abertos (FIRING) do serviço. */
     protected List<Alert> openAlertsOf(String serviceId) {
         return alertRepository.findByServiceIdAndStatus(
-                UUID.fromString(serviceId), AlertStatus.FIRING);
+                UUID.fromString(serviceId), AlertStatus.FIRING, Pageable.unpaged())
+                .getContent();
     }
 
     /** Exatamente UM alerta no serviço — devolve-o (falha se houver 0 ou 2+). */

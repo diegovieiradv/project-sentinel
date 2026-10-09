@@ -218,6 +218,25 @@ public class Incident {
         this.resolvedAt = null;
     }
 
+    /**
+     * Carimbo de criação (Prompt 17 / RES-02 — dívida de documentação).
+     *
+     * <p><b>Por que {@code Instant.now()} e não o {@code Clock} do
+     * domínio:</b> {@code IncidentService} recebe
+     * {@code com.sentinel.monitoring.Clock} injetado e é ele quem marca
+     * {@code startedAt}, transições e eventos da timeline. Os callbacks JPA
+     * porém rodam DENTRO do {@code EntityManager}, sem passar por construtor
+     * ou método do service — a injeção de dependência não alcança este
+     * ponto, e um campo estático acoplaria a entidade a um relógio global
+     * (quebrando testes que controlam o tempo). É o padrão do projeto:
+     * relógio do domínio onde o service participa, {@code Instant.now()}
+     * aqui.</p>
+     *
+     * <p>{@code createdAt} nasce UMA vez (o {@code null} é a checagem) e não
+     * muda mais; {@code updatedAt} é reescrito por {@link #onUpdate} a cada
+     * persistência. {@code id} é gerado pela aplicação porque a migration
+     * V11 não declara DEFAULT no UUID.</p>
+     */
     @PrePersist
     void onCreate() {
         if (id == null) {
@@ -230,6 +249,21 @@ public class Incident {
         updatedAt = now;
     }
 
+    /**
+     * Carimbo de atualização (Prompt 17 / RES-02 — dívida de documentação).
+     *
+     * <p>Disparado pelo JPA a cada {@code UPDATE} desta linha, e é o ÚNICO
+     * escritor de {@code updatedAt}: a migration V11 deliberadamente não
+     * declara trigger para a coluna (mesmo arranjo do projeto — quem marca
+     * é a aplicação). Consequência prática da mesma regra de
+     * {@link #onCreate}: uma escrita que não passa pelo ciclo de persistência
+     * (SQL direto) não re-carimba a linha — hoje não existe nenhuma delas
+     * sobre {@code incidents}, mas é o motivo de a coluna não ser
+     * "atualizada sozinha" pelo banco.</p>
+     *
+     * <p>A razão de {@code Instant.now()} neste contexto (e não o relógio
+     * injetado no service) está em {@link #onCreate}.</p>
+     */
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();

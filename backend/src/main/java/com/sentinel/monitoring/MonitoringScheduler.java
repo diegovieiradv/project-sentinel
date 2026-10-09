@@ -98,7 +98,10 @@ public class MonitoringScheduler {
         }
 
         // Limpeza: quem saiu da elegibilidade (desativado, removido, serviço
-        // ou projeto inativos) perde o estado de vencimento.
+        // ou projeto inativos) perde o estado de vencimento. Este é também o
+        // ÚNICO sinal de cancelamento de uma checagem já em voo: a task só
+        // deixa de persistir/avaliar quando a sua entrada SOME aqui (ver
+        // MonitorExecutionTask — gate após a rede, não antes).
         int pruned = dueTracker.retainOnly(eligibleIds);
         if (pruned > 0) {
             log.debug("monitoring pruned obsolete due-state count={}", pruned);

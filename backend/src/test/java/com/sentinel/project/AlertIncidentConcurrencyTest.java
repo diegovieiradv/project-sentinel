@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.sentinel.project.alert.automation.AlertIncidentAutomation;
 import com.sentinel.project.alert.automation.LinkRaceLostException;
@@ -35,6 +36,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -334,6 +336,81 @@ class AlertIncidentConcurrencyTest extends AbstractIncidentIntegrationTest {
                         Integer.class))
                 .as("nenhum evento órfão: a tentativa revertida não deixou resto")
                 .isZero();
+    }
+
+    // --- RES-07: violação de integridade -------------------------------------
+
+    /**
+     * RES-07: o orquestrador absorve UMA violação de integridade — e só a
+     * da constraint parcial da V12. Injetada a cada tentativa dentro da
+     * transação (é lá que o banco a acusaria), o método esgota o TETO de 3
+     * e retorna NORMALMENTE: nenhuma exceção chega ao caller e nada fica
+     * meio-escrito. É a prova do contrato "best-effort + nunca loop" do
+     * Javadoc de {@code automate}.
+     */
+    @Test
+    void benignCorrelationViolationIsRetriedUpToTheCeilingAndNeverPropagates()
+            throws Exception {
+        CodedScene coded = sceneWithRule("auto-ceiling", serviceLevelRule("Regra ceiling"));
+        Scene scene = coded.scene();
+        evaluate(scene.serviceId());
+        enableFlag(scene, coded.ruleId());
+        assertThat(incidentsOf(scene.serviceId()))
+                .as("cenário nasce sem incidente: a automação não rodou no evaluate")
+                .isEmpty();
+
+        AtomicInteger attempts = new AtomicInteger();
+        FlakyAutomationConfig.corruptCorrelation = () -> {
+            attempts.incrementAndGet();
+            return "could not create unique index \"uq_incidents_auto_open_per_service\""
+                    + " on table \"incidents\"";
+        };
+        UUID serviceUuid = UUID.fromString(scene.serviceId());
+        UUID alertUuid = singleAlertOf(scene.serviceId()).getId();
+
+        // NÃO lança: corrida benigna nunca sobe para o ciclo de avaliação
+        automation.automate(serviceUuid, alertUuid);
+
+        assertThat(attempts.get())
+                .as("teto de 3 tentativas — uma original e duas novas transações")
+                .isEqualTo(3);
+        assertThat(incidentsOf(scene.serviceId()))
+                .as("tentativa abortada no meio não deixa nada meio-escrito")
+                .isEmpty();
+        assertThat(singleAlertOf(scene.serviceId()).getIncident())
+                .as("sem vínculo: nada foi criado nem associado")
+                .isNull();
+    }
+
+    /**
+     * Recíproco: violação que <b>não</b> é a corrida da V12 (constraint
+     * qualquer, NOT NULL, CHECK…) é DEFEITO, não ruído de concorrência.
+     * Mesma exceção, mensagem diferente — e o desfecho muda: UMA tentativa,
+     * sem retry, e a exceção sobe para o caller logar.
+     */
+    @Test
+    void nonCorrelationIntegrityViolationPropagatesOnTheFirstAttempt() throws Exception {
+        CodedScene coded = sceneWithRule("auto-broken", serviceLevelRule("Regra broken"));
+        Scene scene = coded.scene();
+        evaluate(scene.serviceId());
+        enableFlag(scene, coded.ruleId());
+        assertThat(incidentsOf(scene.serviceId())).isEmpty();
+
+        AtomicInteger attempts = new AtomicInteger();
+        FlakyAutomationConfig.corruptCorrelation = () -> {
+            attempts.incrementAndGet();
+            return "null value in column \"incident_id\" violates not-null constraint";
+        };
+        UUID serviceUuid = UUID.fromString(scene.serviceId());
+        UUID alertUuid = singleAlertOf(scene.serviceId()).getId();
+
+        assertThatThrownBy(() -> automation.automate(serviceUuid, alertUuid))
+                .as("fora da corrida da V12 a violação NÃO é engolida")
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThat(attempts.get())
+                .as("nenhum retry para violação que não é a corrida conhecida")
+                .isEqualTo(1);
     }
 
     // --- P2-3: falha injetada ------------------------------------------------

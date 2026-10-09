@@ -4,6 +4,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import com.sentinel.project.alert.automation.AlertIncidentCorrelator;
 import com.sentinel.project.alert.automation.AlertIncidentLinker;
@@ -12,6 +13,7 @@ import com.sentinel.project.incident.model.Incident;
 import com.sentinel.project.incident.service.IncidentService;
 
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
@@ -47,6 +49,11 @@ import org.springframework.context.annotation.Primary;
  *       janela em que o vínculo HUMANO vence a corrida (P1-1). O caminho
  *       manual não passa por este bean (usa o repositório direto, via
  *       {@code IncidentService.linkAlert}).</li>
+ *   <li>{@link #corruptCorrelation} — a correlação lança
+ *       {@link DataIntegrityViolationException} a cada tentativa, com a
+ *       mensagem que o teste escolher: é assim que se prova que o
+ *       orquestrador TENTA DE NOVO só para a violação da constraint da
+ *       V12 e sobe a exceção para qualquer outra (Prompt 17, RES-07).</li>
  * </ul>
  */
 @TestConfiguration
@@ -64,12 +71,22 @@ public class FlakyAutomationConfig {
     /** Portão que segura o vínculo da automação ({@code null} = normal). */
     public static volatile CountDownLatch linkProceed;
 
+    /**
+     * Violação de integridade injetada na correlação ({@code null} =
+     * normal). Chamada UMA vez por tentativa — é o contador de chamadas do
+     * teste que prova o teto de 3 (RES-07), e a mensagem escolhida pelo
+     * teste decide se é a corrida benigna (retry + silêncio) ou um defeito
+     * (rethrow).
+     */
+    public static volatile Supplier<String> corruptCorrelation;
+
     /** Estado nominal entre testes — chamar em {@code @AfterEach}. */
     public static void reset() {
         correlationGate = null;
         correlatorExplodes = false;
         linkReached = null;
         linkProceed = null;
+        corruptCorrelation = null;
     }
 
     @Bean
@@ -81,6 +98,12 @@ public class FlakyAutomationConfig {
             public Optional<Incident> findOpen(UUID serviceId) {
                 if (correlatorExplodes) {
                     throw new IllegalStateException("incident store down (test)");
+                }
+                Supplier<String> corrupt = corruptCorrelation;
+                if (corrupt != null) {
+                    // exatamente onde o banco acusaria a violação: dentro da
+                    // transação da tentativa, antes de qualquer escrita
+                    throw new DataIntegrityViolationException(corrupt.get());
                 }
                 // consulta ANTES do portão: cada lado enxerga "vazio" antes
                 // de o outro criar — é isso que transforma a corrida em

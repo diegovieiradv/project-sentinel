@@ -32,6 +32,8 @@ import com.sentinel.project.model.Service;
 import com.sentinel.project.repository.ProjectRepository;
 import com.sentinel.project.repository.ServiceRepository;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -99,6 +101,8 @@ import org.springframework.transaction.annotation.Transactional;
 // do Spring com FQN aqui (única ocorrência deste módulo).
 @org.springframework.stereotype.Service
 public class IncidentService {
+
+    private static final Logger log = LoggerFactory.getLogger(IncidentService.class);
 
     /** Mensagens do contrato público da API. */
     public static final String PROJECT_INACTIVE_MESSAGE =
@@ -516,6 +520,15 @@ public class IncidentService {
         if (alertRepository.unlinkIncident(alert.getId(), incident) == 1) {
             emit(incident, IncidentEventType.ALERT_UNLINKED, "Alert " + alertId + " unlinked",
                     TenantContext.userId());
+        }
+        else {
+            // 0 linhas: o UPDATE condicional não casou — o alerta já não
+            // apontava para ESTE incidente (estava livre ou ligado a outro).
+            // Benigno e intencionalmente silencioso para o cliente (o 204 é o
+            // contrato, decidido pelo controller); fica só a marca de
+            // diagnóstico, que é o sinal de uma corrida perdida na releitura.
+            log.debug("alert unlink no-op - conditional update matched 0 rows incidentId={} alertId={}",
+                    incidentId, alertId);
         }
     }
 

@@ -151,9 +151,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(body);
     }
 
+    /**
+     * Catch-all: qualquer exceção não mapeada vira {@code 500 INTERNAL_ERROR}
+     * no shape padrão, com corpo genérico (nunca vaza tipo, mensagem ou
+     * stack trace do servidor para o cliente).
+     *
+     * <p>O log registra o tipo concreto ({@code type=}) ANTES da pilha: com a
+     * mensagem curta já é possível ver no nível ERROR de qual exceção se
+     * trata mesmo quando o appender truncou o stack; o {@code ex} continua
+     * sendo o último argumento slf4j, que é o que liga a pilha ao marcador
+     * correto.</p>
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex, HttpServletRequest request) {
-        log.error("Unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), ex);
+        log.error("Unhandled exception on {} {} type={}",
+                request.getMethod(), request.getRequestURI(), ex.getClass().getSimpleName(), ex);
         ErrorResponse body = new ErrorResponse(
                 "INTERNAL_ERROR",
                 "An internal error occurred",

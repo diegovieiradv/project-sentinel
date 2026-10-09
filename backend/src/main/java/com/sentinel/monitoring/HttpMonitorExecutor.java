@@ -34,11 +34,25 @@ import org.springframework.stereotype.Component;
  *       {@code HttpClient} não é eliminável por completo — ver
  *       {@code docs/monitoring-engine.md};</li>
  *   <li>monta a requisição: método GET/HEAD, {@code timeout =
- *       Monitor.timeoutMillis} (o limite que realmente segura a checagem —
- *       não depende de timeout global do cliente) e apenas um
- *       {@code User-Agent} identificável do Sentinel;</li>
+ *       Monitor.timeoutMillis} e apenas um {@code User-Agent} identificável
+ *       do Sentinel;</li>
  *   <li>envia pelo {@link HttpTransport} e classifica o resultado.</li>
  * </ol>
+ *
+ * <p><b>Timeout = UM round-trip, não um por fase:</b>
+ * {@code Monitor.timeoutMillis} é o orçamento temporal da <b>resposta</b>
+ * desta checagem — ele cobre a troca inteira (resolução de nome, conexão,
+ * handshake TLS e espera da resposta), medida a partir do {@code send()} até
+ * a resposta chegar. O <b>estabelecimento de conexão</b> tem teto próprio,
+ * fixo em 10 s ({@code connectTimeout} do {@link JdkHttpTransport}): quando
+ * {@code timeoutMillis > 10000} (o campo aceita até 30000), uma conexão
+ * pendurada é cortada aos 10 s, não ao orçamento do monitor. Não existe
+ * timeout separado por fase além destes dois, nem um timeout global do
+ * {@code HttpClient} configurado aqui. Quando o orçamento estoura, o JDK
+ * levanta {@link HttpTimeoutException}, este executor traduz em
+ * {@link MonitorOutcome#TARGET_FAILURE} + {@code FailureCategory.TIMEOUT}
+ * com mensagem de domínio, e a checagem termina normalmente — sem abortar
+ * thread nem deixar o monitor preso.</p>
  *
  * <p><b>Nunca lança para fora:</b> toda exceção durante a execução —
  * inclusive as inesperadas — é traduzida em {@link MonitorExecutionResult}.

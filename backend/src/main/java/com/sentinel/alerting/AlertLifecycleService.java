@@ -15,6 +15,7 @@ import com.sentinel.project.model.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  * status de volta para FIRING.</p>
  *
  * <p><b>Deduplicação em dois níveis:</b> o pré-check
- * ({@link AlertRepository#findByAlertRuleIdAndStatus}) evita o insert no caso
+ * ({@link AlertRepository#findFirstByAlertRuleIdAndStatus}) evita o insert no caso
  * comum; a corrida entre dois cycles é absorvida pelo índice parcial — o
  * perdedor recebe {@code DataIntegrityViolationException}, que o
  * {@link AlertEngine} reconhece como corrida benigna (o alerta já existe, o
@@ -111,7 +112,7 @@ public class AlertLifecycleService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void fire(Service service, AlertRule rule, EvaluationResult result) {
         Instant now = clock.instant();
-        alertRepository.findByAlertRuleIdAndStatus(rule.getId(), AlertStatus.FIRING)
+        alertRepository.findFirstByAlertRuleIdAndStatus(rule.getId(), AlertStatus.FIRING)
                 .ifPresentOrElse(
                         open -> {
                             open.touch(now, result.value());
@@ -147,7 +148,7 @@ public class AlertLifecycleService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void resolveOpenForRule(UUID ruleId, AlertResolutionReason reason) {
         Instant now = clock.instant();
-        alertRepository.findByAlertRuleIdAndStatus(ruleId, AlertStatus.FIRING)
+        alertRepository.findFirstByAlertRuleIdAndStatus(ruleId, AlertStatus.FIRING)
                 .ifPresent(alert -> resolve(alert, reason, now));
     }
 
@@ -161,7 +162,8 @@ public class AlertLifecycleService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void resolveOpenForService(UUID serviceId, AlertResolutionReason reason) {
         Instant now = clock.instant();
-        for (Alert alert : alertRepository.findByServiceIdAndStatus(serviceId, AlertStatus.FIRING)) {
+        for (Alert alert : alertRepository.findByServiceIdAndStatus(
+                serviceId, AlertStatus.FIRING, Pageable.unpaged())) {
             resolve(alert, reason, now);
         }
     }
@@ -176,7 +178,8 @@ public class AlertLifecycleService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void resolveOpenForProject(UUID projectId, AlertResolutionReason reason) {
         Instant now = clock.instant();
-        for (Alert alert : alertRepository.findByProjectIdAndStatus(projectId, AlertStatus.FIRING)) {
+        for (Alert alert : alertRepository.findByProjectIdAndStatus(
+                projectId, AlertStatus.FIRING, Pageable.unpaged())) {
             resolve(alert, reason, now);
         }
     }

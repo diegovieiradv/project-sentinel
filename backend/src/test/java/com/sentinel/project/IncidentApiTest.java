@@ -19,12 +19,19 @@ import com.sentinel.project.incident.model.IncidentEventType;
 import com.sentinel.project.incident.model.IncidentSource;
 import com.sentinel.project.incident.model.IncidentStatus;
 
+import jakarta.persistence.EntityManagerFactory;
+
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -54,6 +61,9 @@ class IncidentApiTest extends AbstractIncidentIntegrationTest {
 
     @ServiceConnection
     static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     @BeforeAll
     static void startDatabase() {
@@ -499,6 +509,106 @@ class IncidentApiTest extends AbstractIncidentIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, scene.org().ownerBearer()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    // --- PERF-07: paginação + sem N+1 ---------------------------------------
+
+    /**
+     * PERF-07 (paginação): cinco incidentes com {@code size=2} → três páginas
+     * (2 + 2 + 1) sem lacuna e sem duplicata, na ordem fixa
+     * {@code startedAt DESC, id DESC} do contrato.
+     *
+     * <p>A paginação é a prova observável de que o {@code JOIN FETCH} da
+     * cadeia do tenant não multiplica linha: {@code Incident} →
+     * {@code Service} → {@code Project} → {@code Organization} são todos
+     * {@code @ManyToOne}, então cada incidente continua ocupando UM slot da
+     * página.</p>
+     */
+    @Test
+    void list_paginatesFiveIncidentsIntoThreePagesWithoutGapsOrDuplicates()
+            throws Exception {
+        Fixture org = newOrganization(uniqueEmail("incident-pages"), "Org Incident Pages");
+        String projectId = createProject(org.ownerBearer(), org.organizationId(), "Projeto Pages");
+        String serviceId = createService(org.ownerBearer(), org.organizationId(), projectId, "Serviço Pages");
+        String url = incidentsUrl(org.organizationId(), projectId, serviceId);
+
+        for (int i = 0; i < 5; i++) {
+            Map<String, Object> body = incidentPayload("Incidente " + i);
+            body.put("startedAt", Instant.now().minus(Duration.ofHours(10 - i)).toString());
+            createIncident(org.ownerBearer(), org.organizationId(), projectId, serviceId, body);
+        }
+
+        // Incidente 4 é o mais novo (startedAt mais recente) → página 0
+        String[][] expected = {
+            {"Incidente 4", "Incidente 3"},
+            {"Incidente 2", "Incidente 1"},
+            {"Incidente 0"}
+        };
+        for (int page = 0; page < expected.length; page++) {
+            var result = mockMvc.perform(get(url)
+                            .param("page", String.valueOf(page))
+                            .param("size", "2")
+                            .header(HttpHeaders.AUTHORIZATION, org.ownerBearer()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.content").isArray())
+                    .andExpect(jsonPath("$.content.length()").value(expected[page].length))
+                    .andExpect(jsonPath("$.totalElements").value(5))
+                    .andExpect(jsonPath("$.totalPages").value(3))
+                    .andExpect(jsonPath("$.number").value(page))
+                    .andExpect(jsonPath("$.size").value(2));
+            for (int i = 0; i < expected[page].length; i++) {
+                result.andExpect(jsonPath("$.content[" + i + "].title").value(expected[page][i]));
+            }
+        }
+    }
+
+    /**
+     * PERF-07 (N+1): a listagem lê a árvore inteira do tenant POR LINHA, então
+     * sem {@code JOIN FETCH} seriam três selects extras para cada incidente da
+     * página. Medi isso direto no driver: {@code Statistics} ligado só na
+     * janela da chamada, contando prepared statements do JDBC.
+     *
+     * <p>Página de 10 → esperado 2 (conteúdo + count derivado), com folga até
+     * 6. Um N+1 real daria 1 + 3×10 = 31, muito acima do teto.</p>
+     */
+    @Test
+    void list_pageOfTenLoadsTenantChainInOneShotNeverNPlusOne() throws Exception {
+        Fixture org = newOrganization(uniqueEmail("incident-nplusone"), "Org Incident NPlusOne");
+        String projectId = createProject(org.ownerBearer(), org.organizationId(), "Projeto N+1");
+        String serviceId = createService(org.ownerBearer(), org.organizationId(), projectId, "Serviço N+1");
+        String url = incidentsUrl(org.organizationId(), projectId, serviceId);
+
+        for (int i = 0; i < 10; i++) {
+            createIncident(org.ownerBearer(), org.organizationId(), projectId, serviceId,
+                    incidentPayload("Incidente " + i));
+        }
+
+        mockMvc.perform(get(url).param("size", "10")
+                        .header(HttpHeaders.AUTHORIZATION, org.ownerBearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(10))
+                .andExpect(jsonPath("$.totalElements").value(10));
+
+        Statistics statistics =
+                entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        boolean wasEnabled = statistics.isStatisticsEnabled();
+        statistics.setStatisticsEnabled(true);
+        long statements;
+        try {
+            statistics.clear();
+            Page<Incident> page = incidentRepository.search(
+                    UUID.fromString(serviceId), null, null, PageRequest.of(0, 10));
+            statements = statistics.getPrepareStatementCount();
+            assertThat(page.getContent()).hasSize(10);
+        } finally {
+            statistics.clear();
+            statistics.setStatisticsEnabled(wasEnabled);
+        }
+
+        assertThat(statements)
+                .as("prepared statements ao carregar uma página de 10 com a cadeia tenant")
+                .isGreaterThan(0)
+                .isLessThanOrEqualTo(6);
     }
 
     // --- GET detalhe --------------------------------------------------------

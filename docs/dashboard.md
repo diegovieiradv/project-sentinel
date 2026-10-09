@@ -205,7 +205,7 @@ com.sentinel.project.monitor.dto.ProjectWindowSummary           # range + janela
 
 **Frontend — `dashboard.test.ts` (24 testes, vitest em ambiente `node`)**: path de três níveis + `?range=`; ausência de `method` (GET puro); `Authorization` presente e `X-Organization-Id` ausente (org já está no path); `404`/`400`/`401` (com `SESSION_EXPIRED_EVENT`); rótulos completos por enum; `null` → `"—"`; janela meia-aberta; UTC determinístico; plural; estado vazio; `getDashboard` + helpers.
 
-**Validação executada**: `mvn -o test` → **837 testes, 0 falhas** (baseline 802 + 35 novos); `npm run lint`, `npm run type-check`, `npm run test` (**199 testes** — baseline 175 + 24 novos) e `npm run build` (Next 16.3.6) todos limpos.
+**Validação executada no Prompt 16**: `mvn -o test` → **837 testes, 0 falhas** (baseline 802 + 35 novos); `npm run lint`, `npm run type-check`, `npm run test` (**199 testes** — baseline 175 + 24 novos) e `npm run build` (Next 16.3.6) todos limpos. **Base atual após o Prompt 17: 862 testes backend e 207 frontend** (reconciliado em `security-hardening.md` §8).
 
 ## 9. Fronteira com o Prompt 17 (fora do escopo)
 
@@ -217,9 +217,9 @@ graph LR
     QS -. lê .-> CHK["monitor_checks ✅ P10/P11"]
     QS -. lê .-> ALRT["alerts ✅ P13"]
     QS -. lê .-> INC["incidents + incident_events ✅ P14/P15"]
-    QS -.x WR["escrita / tabela própria / cache / job<br/>⛔ NOT IMPLEMENTED (P17+)"]
-    UI -.x LIVE["polling · WebSocket · SSE · auto-refresh<br/>⛔ NOT IMPLEMENTED (P17+)"]
-    UI -.x NOTIF["notificações · ack · silêncio · escalonamento · on-call · audit log<br/>⛔ NOT IMPLEMENTED (P17+)"]
+    QS -.x WR["escrita / tabela própria / cache / job<br/>⛔ NOT IMPLEMENTED (fora do P17)"]
+    UI -.x LIVE["polling · WebSocket · SSE · auto-refresh<br/>⛔ NOT IMPLEMENTED (fora do P17)"]
+    UI -.x NOTIF["notificações · ack · silêncio · escalonamento · on-call · audit log<br/>⛔ NOT IMPLEMENTED (fora do P17)"]
 ```
 
 - **Nenhuma escrita a partir do painel**: não existem `POST`/`PATCH`/`DELETE`, nem ação de "reconhecer"/"resolver" dentro do `DashboardPanel` — quem muda estado continua sendo as rotas dos domínios (Prompts 07/12/13/14), com `405` garantido na rota do painel.
