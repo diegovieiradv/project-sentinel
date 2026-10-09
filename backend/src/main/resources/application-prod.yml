@@ -7,6 +7,8 @@ spring:
     # Fail-fast no perfil prod: sem fallback fraco (o default "sentinel" do
     # application.yml base continua valendo apenas para dev local).
     password: ${DATABASE_PASSWORD:?DATABASE_PASSWORD é obrigatória no perfil prod}
+    url: ${DATABASE_URL:?DATABASE_URL é obrigatória no perfil prod}
+    username: ${DATABASE_USERNAME:?DATABASE_USERNAME é obrigatório no perfil prod}
   jpa:
     show-sql: false
   flyway:

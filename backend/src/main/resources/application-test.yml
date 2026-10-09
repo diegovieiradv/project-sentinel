@@ -13,3 +13,8 @@ spring:
 sentinel:
   monitoring:
     enabled: false
+
+app:
+  security:
+    rate-limit:
+      enabled: false
