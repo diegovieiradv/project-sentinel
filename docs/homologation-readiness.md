@@ -81,7 +81,7 @@ Nada abaixo foi implementado neste prompt — a coluna "Por que bloqueia" é o m
 | 3 | **Reset/verificação de senha** | sem recuperação, conta perdida é perdida; sem verificação, e-mail não é provado | não existe |
 | 4 | **Trilha de auditoria** | `incident_events` é timeline de domínio, **não** audit log (sem `REVOKE DELETE`, sem retenção, sem "quem alterou a regra") | não existe |
 | 5 | **Observabilidade** (logs estruturados → coletor, métricas de aplicação, tracing) | em incidente real não há como reconstruir o que aconteceu | não existe (sem OpenTelemetry/Micrometer custom, só `health`/`info`) |
-| 6 | **Backup + restore exercitados** | sem restore testado, backup não é plano de recuperação | não exercitado neste repo |
+| 6 | **Backup + restore exercitados** | sem restore testado, backup não é plano de recuperação | **exercitado na Etapa 02.3 com validação de integridade** ([database-backup-restore.md](database-backup-restore.md)) |
 | 7 | **Load test / capacity** | nenhum número de throughput ou degradação sob carga | não executado |
 | 8 | **Pen-test / revisão de segurança independente** | a guarda SSRF foi fechada com testes próprios, não por auditoria externa | não executado |
 | 9 | **CSP / HSTS / `Referrer-Policy`** | só `X-Content-Type-Options` e `X-Frame-Options` estão declarados | não verificado por teste |

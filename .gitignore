@@ -41,3 +41,8 @@ Thumbs.db
 
 # Docker Compose local overrides
 docker-compose.override.yml
+
+# Database backups (scripts/database/backup.sh — Etapa Pós-Roadmap 02.3)
+backups/
+*.dump
+*.dump.sha256

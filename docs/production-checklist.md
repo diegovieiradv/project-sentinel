@@ -74,18 +74,24 @@ Tabela completa conforme os fontes reais de configuração. **Fail-fast** = o st
 
 ## 5. Banco persistente — backup e restore
 
-Procedimento padrão PostgreSQL (declarado, **não exercitado neste projeto**):
+> **Status: exercitado na Etapa 02.3** (pós-roadmap) — backup, verificação e restore em ambiente isolado foram executados de ponta a ponta com validação de integridade (contagens por tabela, catálogo Flyway, FKs e fixtures). O procedimento operacional completo — scripts, proteções de destino, provisionamento do ambiente isolado, seed de dados descartáveis, validação pós-restore e testes negativos — está em [database-backup-restore.md](database-backup-restore.md).
+
+Resumo do fluxo (detalhes e comandos copiáveis no documento acima):
 
 ```bash
-# Backup (custom format — base para pg_restore)
-pg_dump -Fc -h <host> -p <porta> -U sentinel -d sentinel -f sentinel-$(date +%Y%m%d).dump
+# Backup (custom format — base para pg_restore; sai do container sentinel-postgres)
+scripts/database/backup.sh                       # → backups/sentinel_YYYYMMDD_HHMMSS.dump + .sha256
 
-# Restore em banco vazio (drop/create do DB alvo é responsabilidade do operador)
-pg_restore -h <host> -p <porta> -U sentinel -d sentinel --clean --if-exists sentinel-YYYYMMDD.dump
+# Verificação do artefato (formato custom, TOC, checksum)
+scripts/database/verify-backup.sh backups/sentinel_YYYYMMDD_HHMMSS.dump --check-checksum
+
+# Restore SOMENTE em destino não-produção (container isolado sentinel-restore-test, porta 5434)
+scripts/database/restore.sh backups/sentinel_YYYYMMDD_HHMMSS.dump --force-restore-to sentinel_restore
 ```
 
-- Backup agendado e **restore exercitado** (com verificação de consistência) são **pré-requisitos de produção** — até o momento o restore **não foi testado neste repositório** (gap §14).
+- O `restore.sh` **recusa destino `sentinel`** (exit 3, antes de qualquer conexão, sem override possível) e também recusa destino no **cluster de origem** (host loopback + porta 5433), mesmo com dbname diferente — restauração no banco original não é suportada pelo script.
 - O volume do compose (`sentinel_pgdata`) não substitui backup: destruição do volume = perda dos dados.
+- Backup agendado (cron/CI) continua sendo decisão de operação do responsável; o repositório exercitou o ciclo manual completo.
 
 ## 6. Migrations (Flyway)
 
@@ -192,7 +198,7 @@ Cada item: 1 linha de impacto + mitigação sugerida. Nenhum destes itens foi re
 | 5 | **Observabilidade ausente** (logs estruturados → coletor, métricas, tracing) | em incidente real não há como reconstruir o que aconteceu | OpenTelemetry + coletor (Loki/Datadog/etc.) |
 | 6 | **CSP / HSTS / `Referrer-Policy` ausentes** (medido e confirmado no P18) | navegador sem política de conteúdo/transporte dura; app expõe apenas `X-Content-Type-Options` e `X-Frame-Options` | emitir HSTS e CSP no reverse proxy (§9) |
 | 7 | **CI não ativada** (workflow [ci.yml](../.github/workflows/ci.yml) preparado localmente; repo ainda sem remote — **zero execuções no GitHub**) | sem run remota, merge que quebra build/testes segue desimpedido até o push/ativação | ativar a CI: criar remote + push + required checks ([continuous-integration.md](continuous-integration.md) §12) |
-| 8 | **Backup/restore não exercitados** | backup sem restore testado não é plano de recuperação | executar restore em ambiente de staging e cronometrar RTO |
+| 8 | **Backup/restore exercitados localmente; agendamento e RTO pendentes** | o ciclo manual já foi exercitado (Etapa 02.3, [database-backup-restore.md](database-backup-restore.md)), mas não há backup agendado nem RTO medido em produção | agendar backup (cron/CI) e cronometrar RTO em ambiente staging/produção |
 | 9 | **Pen-test / revisão independente não executados** | guarda SSRF validada apenas por testes próprios | agendar auditoria externa antes de dados reais sensíveis |
 | 10 | **SLO / alerta interno não definidos** | sem meta de erro/latência nem alerta do próprio Sentinel | definir SLO mínimo e probe externo no `/api/v1/health` |
 | 11 | **Rotação de `JWT_SECRET` sem downtime** | troca do segredo invalida todos os tokens (dor de usuários) | janela de manutenção + aviso prévio; futuro: segredos assinados com sobreposição |
@@ -205,5 +211,5 @@ Cada item: 1 linha de impacto + mitigação sugerida. Nenhum destes itens foi re
 
 - Sem **P0/P1/P2 novos** apontados pela homologação final: baseline backend **865/0/0/0**, frontend **207** testes, lint/type-check/build exit 0; fluxo E2E real (identidade → tenant → monitor → alerta → incidente → dashboard → recuperação), isolamento cross-tenant, RBAC, guarda SSRF (34 casos negativos), Flyway 12/12 e smoke de latência local executados com evidência (ver [homologation-readiness.md](homologation-readiness.md) §9).
 - **Ressalvas** = todos os itens da §14 (gaps de segurança/operacão pré-existentes, confirmados ou medidos na homologação) + UI em browser **NOT VERIFIED**.
-- **Restore de banco não exercitado** (§5) e **pen-test não executado** permanecem condições de produção.
+- ~~**Restore de banco não exercitado**~~ — **superado pela Etapa 02.3**: ciclo backup → verificação → restore em ambiente isolado exercitado com validação de integridade (§5, [database-backup-restore.md](database-backup-restore.md)); **pen-test não executado** permanece condição de produção.
 - **Provedor de hospedagem: decisão pendente do responsável** — este documento não escolhe cloud, PaaS nem modo de gestão (VM/container serverless); qualquer um dos caminhos atende à arquitetura da §1 desde que as regras das §§3–10 sejam cumpridas.
