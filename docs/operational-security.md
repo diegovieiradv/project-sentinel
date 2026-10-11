@@ -4,7 +4,7 @@
 
 Implementados no `SecurityConfig.java` (frente A):
 
-- `Content-Security-Policy`: `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none';`
+- `Content-Security-Policy`: `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://localhost:8080; frame-ancestors 'none';` — `connect-src` inclui a origem da API porque o frontend chama a API cross-origin (sem isso o fetch é bloqueado pela própria CSP). Em runtime local/build default a origem é `http://localhost:8080`; em outros ambientes ela vem de `NEXT_PUBLIC_API_URL`.
 - `Strict-Transport-Security`: `max-age=31536000; includeSubDomains; preload`
 - `Referrer-Policy`: `strict-origin-when-cross-origin`
 - `Permissions-Policy`: `camera=(), microphone=(), geolocation=(), accelerometer=(), gyroscope=(), magnetometer=(), usb=(), payment=()`

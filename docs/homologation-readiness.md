@@ -86,7 +86,7 @@ Nada abaixo foi implementado neste prompt — a coluna "Por que bloqueia" é o m
 | 8 | **Pen-test / revisão de segurança independente** | a guarda SSRF foi fechada com testes próprios, não por auditoria externa | não executado |
 | 9 | **CSP / HSTS / `Referrer-Policy`** | só `X-Content-Type-Options` e `X-Frame-Options` estão declarados | não verificado por teste |
 | 10 | **Rotação de `JWT_SECRET` sem downtime** | segredo único: troca invalida todos os tokens emitidos | não existe mecanismo |
-| 11 | **CI** (build/teste automático em PR) | `.github/` não tem workflow — nada impede merge que quebra | não existe |
+| 11 | **CI** (build/teste automático em PR) | sem execução remota no GitHub, nada impede merge que quebra | workflow [ci.yml](../.github/workflows/ci.yml) **preparado localmente**; **não ativado** (repo sem remote — [continuous-integration.md](continuous-integration.md)) |
 | 12 | **Rate de erro/alerta operacional do próprio Sentinel** | sem SLO, error budget ou alerta do sistema | não definido |
 
 ## 5. Decisões de operação que **já estão** no código
@@ -173,7 +173,7 @@ Numeração 1–12 espelha a tabela de bloqueadores da §4; o item 13 é o `EXPL
 | 8 | Pen-test / revisão independente | **NOT VERIFIED** (não executado) | guarda SSRF validada apenas por testes próprios |
 | 9 | CSP / HSTS / `Referrer-Policy` | **MEDIDO E CONFIRMADO AUSENTE** (gap medido, antes "não verificado por teste") | as respostas trazem apenas `X-Content-Type-Options` e `X-Frame-Options`; CSP/HSTS/`Referrer-Policy` **não são emitidos** pela aplicação — mitigação via reverse proxy (`production-checklist.md` §9/§14) |
 | 10 | Rotação de `JWT_SECRET` sem downtime | **NOT VERIFIED** (inexistente) | segredo único; troca invalida todos os tokens |
-| 11 | CI (GitHub Actions) | **NOT VERIFIED** (inexistente) | `.github/` sem workflow |
+| 11 | CI (GitHub Actions) | **NOT VERIFIED** (não executada) | [.github/workflows/ci.yml](../.github/workflows/ci.yml) **preparado localmente** (validado com actionlint — [continuous-integration.md](continuous-integration.md) §10), mas o repo **não tem remote**: **nenhuma execução no GitHub** |
 | 12 | SLO / alerta interno do Sentinel | **NOT VERIFIED** (não definido) | sem meta, error budget nem probe interno |
 | 13 | `EXPLAIN ANALYZE` em volume real (`performance.md` §9) | **PARCIALMENTE MEDIDO** | planos observados em volume **pequeno** da homologação; sem dados reais/produção, o plano pode mudar — revisão em volume grande permanece pendente |
 

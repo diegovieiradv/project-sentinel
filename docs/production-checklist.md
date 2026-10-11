@@ -191,7 +191,7 @@ Cada item: 1 linha de impacto + mitigação sugerida. Nenhum destes itens foi re
 | 4 | **Audit log ausente** | não há trilha "quem alterou o quê" (a timeline de incidentes é domínio, não auditoria) | tabela append-only com `REVOKE DELETE/UPDATE` + retenção |
 | 5 | **Observabilidade ausente** (logs estruturados → coletor, métricas, tracing) | em incidente real não há como reconstruir o que aconteceu | OpenTelemetry + coletor (Loki/Datadog/etc.) |
 | 6 | **CSP / HSTS / `Referrer-Policy` ausentes** (medido e confirmado no P18) | navegador sem política de conteúdo/transporte dura; app expõe apenas `X-Content-Type-Options` e `X-Frame-Options` | emitir HSTS e CSP no reverse proxy (§9) |
-| 7 | **CI ausente** (sem GitHub Actions) | nada impede merge que quebra build/testes | pipeline PR: `mvn test` + frontend lint/type-check/test/build |
+| 7 | **CI não ativada** (workflow [ci.yml](../.github/workflows/ci.yml) preparado localmente; repo ainda sem remote — **zero execuções no GitHub**) | sem run remota, merge que quebra build/testes segue desimpedido até o push/ativação | ativar a CI: criar remote + push + required checks ([continuous-integration.md](continuous-integration.md) §12) |
 | 8 | **Backup/restore não exercitados** | backup sem restore testado não é plano de recuperação | executar restore em ambiente de staging e cronometrar RTO |
 | 9 | **Pen-test / revisão independente não executados** | guarda SSRF validada apenas por testes próprios | agendar auditoria externa antes de dados reais sensíveis |
 | 10 | **SLO / alerta interno não definidos** | sem meta de erro/latência nem alerta do próprio Sentinel | definir SLO mínimo e probe externo no `/api/v1/health` |
