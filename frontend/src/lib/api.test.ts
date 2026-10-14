@@ -1,8 +1,8 @@
 /**
  * Testes unitários do cliente de API (`src/lib/api.ts`) — só as partes puras e
  * críticas: validação de formato UUID da org ativa, ciclo de vida da org ativa
- * (memória + localStorage), o gatilho de sessão do `apiFetch` (401 vs 403) e o
- * timeout de requisição (FE-01).
+ * (memória + localStorage), o gatilho de sessão do `apiFetch` (401 vs 403), o
+ * single-flight do `refreshSession` (AUTH-01) e o timeout de requisição (FE-01).
  *
  * Ambiente `node` (ver `vitest.config.ts`): sem jsdom. Onde o caminho de
  * produção exige `window`/`localStorage`, o teste injeta um stub mínimo.
@@ -19,6 +19,7 @@ import {
   getAccessToken,
   getOrganizationId,
   isValidOrganizationId,
+  refreshSession,
   setAccessToken,
   setOrganizationId,
   me,
@@ -239,6 +240,118 @@ describe("gatilho de sessão do apiFetch (401 vs 403)", () => {
     expect(dispatched).toEqual([]);
     expect(getAccessToken()).toBe("access-token-em-memoria");
     expect(getOrganizationId()).toBe(VALID_UUID);
+  });
+});
+
+describe("single-flight do refreshSession (AUTH-01)", () => {
+  const dispatched: string[] = [];
+
+  const REFRESH_OK = {
+    user: { id: VALID_UUID, name: "Ada", email: "ada@example.com" },
+    accessToken: "novo-access-token",
+  };
+  const REFRESH_401 = {
+    code: "REFRESH_TOKEN_INVALID",
+    message: "Refresh token invalid",
+  };
+
+  let fetchCalls: number;
+  /** Fila de respostas do stub — a última se repete nas chamadas seguintes. */
+  let queue: { status: number; body: unknown }[];
+
+  function jsonResponse(status: number, body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  beforeEach(() => {
+    clearOrganizationId();
+    setAccessToken(null);
+    makeStorage();
+    makeWindow(dispatched);
+    dispatched.length = 0;
+    fetchCalls = 0;
+    queue = [];
+    // Cookie XSRF já presente → o POST não materializa via GET /health.
+    globals.document = { cookie: "XSRF-TOKEN=csrf-test" };
+    globals.fetch = () => {
+      fetchCalls += 1;
+      const next = queue.length > 1 ? queue.shift() : queue[0];
+      if (!next) {
+        return Promise.reject(new Error("fila de respostas vazia no stub"));
+      }
+      return Promise.resolve(jsonResponse(next.status, next.body));
+    };
+  });
+
+  afterEach(() => {
+    clearOrganizationId();
+    setAccessToken(null);
+    delete globals.window;
+    delete globals.localStorage;
+    delete globals.document;
+    globals.fetch = originalFetch;
+    dispatched.length = 0;
+    queue = [];
+  });
+
+  it("chamadas concorrentes compartilham 1 POST /auth/refresh", async () => {
+    queue.push({ status: 200, body: REFRESH_OK });
+
+    const [a, b] = await Promise.all([refreshSession(), refreshSession()]);
+
+    // Backend vê UMA tentativa — a rotação atômica nunca gera perdedora.
+    expect(fetchCalls).toBe(1);
+    expect(a).toEqual(REFRESH_OK);
+    expect(b).toEqual(REFRESH_OK);
+    expect(getAccessToken()).toBe(REFRESH_OK.accessToken);
+    // O refresh em si nunca emita broadcast de "sessão expirada".
+    expect(dispatched).toEqual([]);
+
+    // Tentativa concluída (finally limpa) → próxima chamada é nova de verdade.
+    const again = await refreshSession();
+    expect(fetchCalls).toBe(2);
+    expect(again).toEqual(REFRESH_OK);
+  });
+
+  it("401 do próprio refresh rejeita SEM disparar SESSION_EXPIRED_EVENT", async () => {
+    queue.push({ status: 401, body: REFRESH_401 });
+
+    const err = await refreshSession().catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(401);
+    expect((err as ApiError).code).toBe("REFRESH_TOKEN_INVALID");
+    // O chamador trata o erro — o ouvinte de sessão expirada não é acionado.
+    expect(dispatched).toEqual([]);
+  });
+
+  it("falha compartilhada rejeita todos e libera a próxima tentativa", async () => {
+    queue.push(
+      { status: 401, body: REFRESH_401 },
+      { status: 200, body: REFRESH_OK }
+    );
+
+    const [first, second] = await Promise.all([
+      refreshSession().catch((e: unknown) => e),
+      refreshSession().catch((e: unknown) => e),
+    ]);
+
+    // Mesma tentativa para os dois: erro real NÃO é mascarado nem duplicado.
+    expect(fetchCalls).toBe(1);
+    expect(first).toBeInstanceOf(ApiError);
+    expect(second).toBeInstanceOf(ApiError);
+    expect((first as ApiError).status).toBe(401);
+    expect(getAccessToken()).toBeNull();
+    expect(dispatched).toEqual([]);
+
+    // finally limpa o compartilhamento → a próxima chamada tenta de novo.
+    const retried = await refreshSession();
+    expect(fetchCalls).toBe(2);
+    expect(retried.accessToken).toBe(REFRESH_OK.accessToken);
+    expect(getAccessToken()).toBe(REFRESH_OK.accessToken);
   });
 });
 

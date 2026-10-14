@@ -38,6 +38,40 @@ export interface AuthStatusProps {
 }
 
 /**
+ * Bootstrap de sessão em andamento (single-flight — AUTH-01).
+ *
+ * Em React StrictMode (padrão do App Router — ativo neste projeto) o efeito de
+ * bootstrap é montado 2× em dev: duas execuções independentes disparariam 2×
+ * `POST /auth/refresh`, e a rotação atômica do backend daria 1×200 + 1×401 — o
+ * 401 de uma delas derrubava a sessão recém-renovada ("Signed out" no F5).
+ *
+ * Aqui só UMA tentativa voa por janela de bootstrap: as instâncias concorrentes
+ * aguardam a MESMA Promise e aplicam o resultado no próprio estado (a
+ * desmontada ignora via `cancelled`). Limpo em `finally` (sucesso, falha ou
+ * desmontagem) para a próxima montagem iniciar um bootstrap novo.
+ */
+let sessionBootstrap: Promise<UserResponse> | null = null;
+
+/** Roda (ou reutiliza) o bootstrap: refresh quando necessário + `me()` para confirmar. */
+function bootstrapSession(): Promise<UserResponse> {
+  if (!sessionBootstrap) {
+    sessionBootstrap = (async () => {
+      if (getAccessToken()) {
+        // Já tem token em memória — confirma a sessão com me()
+        return me();
+      }
+      // Nenhum token em memória — tenta refreshSession usando o cookie HttpOnly do refresh
+      await refreshSession();
+      // Depois do refresh, tenta me() novamente para confirmar
+      return me();
+    })().finally(() => {
+      sessionBootstrap = null;
+    });
+  }
+  return sessionBootstrap;
+}
+
+/**
  * Bootstrap de sessão Prompt 03:
  * - Se houver access token em memória → chama me() para confirmar.
  * - Se não houver token → tenta refreshSession() (que usa o cookie HttpOnly do refresh)
@@ -47,6 +81,8 @@ export interface AuthStatusProps {
  * - Durante todo o bootstrap mantém loading — não mostra "Signed in" antes de confirmar.
  * - Escuta SESSION_EXPIRED_EVENT: um 401 em QUALQUER chamada da API (ex.:
  *   listagem de organizações) derruba a sessão inteira para estado anônimo.
+ * - O bootstrap é single-flight por montagem (ver `sessionBootstrap`): em
+ *   StrictMode o efeito monta duas vezes em dev e só 1 refresh voa (AUTH-01).
  */
 export default function AuthStatus({ onAuthStateChange }: AuthStatusProps = {}) {
   const [state, setState] = useState<AuthState>({ kind: "loading" });
@@ -74,62 +110,38 @@ export default function AuthStatus({ onAuthStateChange }: AuthStatusProps = {}) 
   useEffect(() => {
     let cancelled = false;
 
-    async function bootstrap(): Promise<void> {
-      try {
-        const token = getAccessToken();
-
-        if (token) {
-          // Já tem token em memória — confirma a sessão com me()
-          const user = await me();
-          if (!cancelled) {
-            setState({
-              kind: "authed",
-              user,
-            });
-          }
-        } else {
-          // Nenhum token em memória — tenta refreshSession usando o cookie HttpOnly do refresh
-          await refreshSession();
-          // Depois do refresh, tenta me() novamente para confirmar
-          const user = await me();
-          if (!cancelled) {
-            setState({
-              kind: "authed",
-              user,
-            });
-          }
-        }
-      } catch (err) {
-        // 401 = sessão expirada/inválida → anômimo
+    // Single-flight: montagens concorrentes (StrictMode monta o efeito 2× em
+    // dev) aguardam o MESMO bootstrap — 1 refresh + 1 me() por janela (AUTH-01).
+    bootstrapSession().then(
+      (user) => {
+        if (cancelled) return;
+        setState({
+          kind: "authed",
+          user,
+        });
+      },
+      (err) => {
+        // 401 = sessão expirada/inválida → anônimo
         // Qualquer outro erro → estado de erro (não finge autenticação)
         if (cancelled) return;
 
-        if (
-          err instanceof ApiError &&
-          err.status === 401
-        ) {
+        if (err instanceof ApiError && err.status === 401) {
           // Sessão expirada ou token inválido — limpa token, descarta a org
           // ativa (memória + localStorage) e vai para anônimo
           clearAccessToken();
           clearOrganizationId();
-          if (!cancelled) setState({ kind: "anon" });
+          setState({ kind: "anon" });
           return;
         }
 
         // Erro de rede, 5xx, etc — não fingir que o usuário está autenticado
-        if (!cancelled) {
-          setState({
-            kind: "error",
-            message:
-              err instanceof Error
-                ? err.message
-                : "Could not verify session",
-          });
-        }
+        setState({
+          kind: "error",
+          message:
+            err instanceof Error ? err.message : "Could not verify session",
+        });
       }
-    }
-
-    bootstrap();
+    );
 
     return () => {
       cancelled = true;

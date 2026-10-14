@@ -408,6 +408,24 @@ export async function ensureCsrfToken(): Promise<string> {
 }
 
 /**
+ * Opções internas do `apiFetch` — NÃO são parte do contrato público do módulo
+ * (hoje só `refreshSession` as usa).
+ */
+interface ApiFetchOptions {
+  /**
+   * `true` → um 401 **não** dispara `SESSION_EXPIRED_EVENT`.
+   *
+   * Exceção única: o 401 do **próprio** `POST /auth/refresh`. Ele é esperado e
+   * precisa ser tratado apenas pelo chamador — o broadcast de "sessão
+   * expirada" derrubaria a sessão que um refresh concorrente acabou de renovar
+   * (AUTH-01: sob chamadas simultâneas a rotação atômica do backend devolve
+   * 1×200 + N×401, e o 401 da "perdedora" caía por cima do 200 da ganhadora).
+   * O erro continua rejeitando normalmente (`ApiError 401`) para o chamador.
+   */
+  suppressSessionExpiredEvent?: boolean;
+}
+
+/**
  * Request padrão: credentials: "include" + Accept JSON.
  */
 function defaultInit(): RequestInit {
@@ -472,10 +490,13 @@ function timeoutError(path: string): ApiError {
  * - Injeta `X-XSRF-TOKEN` em métodos não-safe (POST PUT DELETE PATCH) usando o valor de `document.cookie`.
  * - Mantém `credentials: "include"` (refresh cookie enviado automaticamente pelo navegador).
  * - Tem timeout (FE-01): conexão + leitura do corpo nunca ficam penduradas.
+ * - Dispara `SESSION_EXPIRED_EVENT` em 401, exceto quando `options.suppressSessionExpiredEvent`
+ *   (usado pelo `refreshSession` — ver `ApiFetchOptions`).
  */
 async function apiFetch<T>(
   path: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  options: ApiFetchOptions = {}
 ): Promise<T> {
   // Timeout nosso, a menos que o chamador já controle a requisição via signal.
   const timeout = init.signal ? null : startRequestTimeout();
@@ -529,7 +550,14 @@ async function apiFetch<T>(
       }
       // 401 = sessão inválida/expirada em QUALQUER chamada → avisa os ouvintes
       // (AuthStatus limpa o token e assume estado anônimo).
-      if (res.status === 401 && typeof window !== "undefined") {
+      // O refresh em si é a única exceção: o 401 dele é tratado pelo próprio
+      // chamador (AuthStatus) e o broadcast aqui derrubaria a sessão renovada
+      // por um refresh concorrente (AUTH-01).
+      if (
+        res.status === 401 &&
+        !options.suppressSessionExpiredEvent &&
+        typeof window !== "undefined"
+      ) {
         window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
       }
       throw new ApiError(
@@ -662,23 +690,38 @@ export async function me(): Promise<UserResponse> {
   return apiFetch<UserResponse>("/api/v1/auth/me");
 }
 
-/**
- * POST /api/v1/auth/refresh → novo access token usando o refresh token do cookie HttpOnly.
- * Sucesso → atualiza o token em memória e retorna {user, accessToken}.
- * 401 (REFRESH_TOKEN_INVALID/EXPIRED/REVOKED) → limpa token e lança erro para o frontend sair da sessão.
- */
-export async function refreshSession(): Promise<{
+/** Resultado de `refreshSession` — contrato de `POST /api/v1/auth/refresh`. */
+interface RefreshResult {
   user: UserResponse;
   accessToken: string;
-}> {
-  const result = await apiFetch<{
-    user: UserResponse;
-    accessToken: string;
-  }>("/api/v1/auth/refresh", {
-    method: "POST",
-    // Nenhum body necessário; o refresh token é enviado automaticamente via cookie HttpOnly + credentials: "include".
-    // O header X-XSRF-TOKEN é injetado por apiFetch.
-  });
+}
+
+/**
+ * Tentativa de refresh em andamento (single-flight — AUTH-01).
+ *
+ * Chamadas concorrentes aguardam a MESMA Promise: só 1 `POST /auth/refresh`
+ * chega ao backend. Sem isso, dois refreshes simultâneos (ex.: bootstrap do
+ * `AuthStatus` montado duas vezes pelo React StrictMode em dev) esbarram na
+ * rotação atômica do refresh token — o backend responde 1×200 + N×401 e o 401
+ * da tentativa "perdedora" derrubava a sessão recém-renovada.
+ *
+ * Limpo em `finally` assim que a tentativa termina (sucesso OU falha): nunca
+ * mascara um erro real e a próxima chamada inicia uma tentativa nova.
+ */
+let refreshInFlight: Promise<RefreshResult> | null = null;
+
+/** Executa UMA tentativa de refresh — sempre via `refreshSession()`, nunca direto. */
+async function performRefresh(): Promise<RefreshResult> {
+  const result = await apiFetch<RefreshResult>(
+    "/api/v1/auth/refresh",
+    {
+      method: "POST",
+      // Nenhum body necessário; o refresh token é enviado automaticamente via cookie HttpOnly + credentials: "include".
+      // O header X-XSRF-TOKEN é injetado por apiFetch.
+    },
+    // 401 do refresh NÃO vira broadcast de sessão expirada (ver ApiFetchOptions).
+    { suppressSessionExpiredEvent: true }
+  );
 
   // Sucesso: rotação do refresh token feita pelo backend; atualiza o access token em memória.
   if (result.accessToken) {
@@ -686,6 +729,31 @@ export async function refreshSession(): Promise<{
   }
 
   return result;
+}
+
+/**
+ * POST /api/v1/auth/refresh → novo access token usando o refresh token do cookie HttpOnly.
+ * Sucesso → atualiza o token em memória e retorna {user, accessToken}.
+ * 401 (REFRESH_TOKEN_INVALID/EXPIRED/REVOKED) → lança erro para o chamador
+ * tratar (o `AuthStatus` limpa token/org e assume estado anônimo) — o próprio
+ * refresh NÃO dispara `SESSION_EXPIRED_EVENT`.
+ *
+ * Single-flight: chamadas concorrentes compartilham a mesma Promise (ver
+ * `refreshInFlight`); o contrato público (retorno e rejeição) não muda.
+ */
+export async function refreshSession(): Promise<RefreshResult> {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+  const attempt = performRefresh();
+  refreshInFlight = attempt;
+  try {
+    return await attempt;
+  } finally {
+    // Sempre que a tentativa termina, compartilhamento acaba — sucesso ou
+    // erro: a próxima chamada nunca herda uma tentativa já concluída.
+    refreshInFlight = null;
+  }
 }
 
 /**
