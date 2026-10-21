@@ -1160,7 +1160,7 @@ function OrganizationSection() {
 
       {/* Membros da organização ativa */}
       {activeOrg ? (
-        <MembersPanel key={activeOrg.id} org={activeOrg} />
+        <MembersPanel key={`members-${activeOrg.id}`} org={activeOrg} />
       ) : (
         <section className="rounded-md border border-(--border) bg-(--card) p-4">
           <h2 className="font-semibold text-white">Members</h2>
@@ -1171,7 +1171,7 @@ function OrganizationSection() {
       )}
 
       {/* Projetos da organização ativa (Prompt 06) — só existe com org selecionada */}
-      {activeOrg && <ProjectsPanel key={activeOrg.id} org={activeOrg} />}
+      {activeOrg && <ProjectsPanel key={`projects-${activeOrg.id}`} org={activeOrg} />}
     </div>
   );
 }
