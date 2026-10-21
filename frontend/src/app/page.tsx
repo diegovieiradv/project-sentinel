@@ -7,6 +7,7 @@ import AuthStatus, { type AuthStateKind } from "@/components/AuthStatus";
 import DashboardPanel from "@/components/DashboardPanel";
 import ServicesPanel from "@/components/ServicesPanel";
 import { handleUnauthorized, isUnauthorized, messageOf } from "@/lib/errors";
+import { appendUniqueById } from "@/lib/collections";
 import {
   listOrganizations,
   createOrganization,
@@ -1023,7 +1024,7 @@ function OrganizationSection() {
     setOrgError(null);
     try {
       const created = await createOrganization(name);
-      setOrgs((prev) => [...prev, created]);
+      setOrgs((prev) => appendUniqueById(prev, created));
       setOrgName("");
       if (!activeOrg) {
         setActiveOrg(created);
