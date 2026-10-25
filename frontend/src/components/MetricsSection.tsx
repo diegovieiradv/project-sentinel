@@ -63,6 +63,12 @@ export default function MetricsSection({
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
+  // Auto-refresh: 60 segundos, sem duplicar requisicoes
+  useEffect(() => {
+    const interval = setInterval(() => { setReload((count) => count + 1); }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Fetch — recarrega em mudança de faixa/reload e de alvo (ids nas deps).
   useEffect(() => {
     let cancelled = false;
