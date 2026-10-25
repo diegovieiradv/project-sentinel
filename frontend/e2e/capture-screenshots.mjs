@@ -36,7 +36,7 @@ async function login(page, mail) {
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL((url) => url.pathname === "/");
-  await page.getByText(/Signed in as/).waitFor();
+  await page.getByRole("button", { name: "Minha conta" }).waitFor();
 }
 
 async function main() {

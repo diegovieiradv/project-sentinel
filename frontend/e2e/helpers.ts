@@ -57,14 +57,21 @@ export async function register(
   return user;
 }
 
-/** Faz login e espera a home autenticada ("Signed in as …"). */
+/**
+ * Faz login e espera a home autenticada.
+ *
+ * Marcador estável da apresentação atual: o botão `Minha conta` do banner
+ * (o perfil antigo "Signed in as …" foi removido na modernização da home).
+ */
 export async function login(page: Page, user: TestUser): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(user.email);
   await page.getByLabel("Password").fill(user.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL((url) => url.pathname === "/");
-  await expect(page.getByText(/Signed in as/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Minha conta" })
+  ).toBeVisible();
 }
 
 /** Registra um usuário descartável e já entra na sessão. */

@@ -2,24 +2,29 @@ import { expect, test } from "@playwright/test";
 import { login, register } from "../helpers";
 
 test.describe("logout", () => {
-  test("Sign out devolve a home ao estado anônimo", async ({ page }) => {
+  test("Sign out redireciona para login", async ({ page }) => {
     const user = await register(page, "logout");
     await login(page, user);
 
-    await expect(page.getByText(/Signed in as/)).toBeVisible();
+    // Perfil único "Minha conta" — dropdown com nome e e-mail reais.
+    const account = page.getByRole("button", { name: "Minha conta" });
+    await expect(account).toBeVisible();
+    await account.click();
+    await expect(page.getByText(user.name)).toBeVisible();
+    await expect(page.getByText(user.email)).toBeVisible();
 
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("button", { name: "Sign Out" }).click();
 
-    // Estado anônimo imediato + a seção de orgs desmonta junto com a sessão.
-    await expect(page.getByText("Signed out")).toBeVisible();
-    await expect(page.getByText(/Signed in as/)).toHaveCount(0);
-    await expect(
-      page.getByText("Sign in to create organizations and manage their members.")
-    ).toBeVisible();
+    // Após logout, deve ser redirecionado para /login
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    // O perfil não existe mais fora de sessão autenticada.
+    await expect(account).toHaveCount(0);
 
-    // Recarrega a página: sem sessão, o bootstrap cai em anônimo de novo
-    // (o refresh token foi revogado/limpo no logout).
+    // Recarrega a página: deve permanecer em /login (sessão realmente limpa)
     await page.reload();
-    await expect(page.getByText("Signed out")).toBeVisible();
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(account).toHaveCount(0);
   });
 });
