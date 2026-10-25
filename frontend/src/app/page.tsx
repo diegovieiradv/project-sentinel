@@ -1518,7 +1518,7 @@ function UserAccount({ user }: { user: UserResponse | null }) {
         >
           <div className="text-xs text-[#cbd5e1]/50 uppercase tracking-wider font-bold mb-2">Usuário</div>
           <div className="text-sm font-semibold text-white">{user.name}</div>
-          <div className="text-xs text-[#cbd5e1]/60">{user.email}</div>
+          <div className="text-xs text-[#cbd5e1]/60 break-all">{user.email}</div>
           <div className="mt-3 border-t border-white/[0.06] pt-2">
             <button
               type="button"

@@ -66,7 +66,7 @@ export default function RegisterPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ada Lovelace"
-                className="w-full rounded-xl border border-white/[0.08] bg-[#181818] px-4 py-3.5 min-h-[48px] text-sm text-white placeholder:text-[#cbd5e1]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#181818] transition-all duration-200"
+                className="w-full rounded-xl border border-white/[0.08] bg-[#181818] px-4 py-3.5 min-h-[48px] text-sm text-white placeholder:text-[#cbd5e1]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0ea5e9] focus-visible:ring-offset-2 focus-visible:ring-offset-[#181818] transition-all duration-200"
               />
             </div>
 
@@ -80,7 +80,7 @@ export default function RegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full rounded-xl border border-white/[0.08] bg-[#181818] px-4 py-3.5 min-h-[48px] text-sm text-white placeholder:text-[#cbd5e1]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#181818] transition-all duration-200"
+                className="w-full rounded-xl border border-white/[0.08] bg-[#181818] px-4 py-3.5 min-h-[48px] text-sm text-white placeholder:text-[#cbd5e1]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0ea5e9] focus-visible:ring-offset-2 focus-visible:ring-offset-[#181818] transition-all duration-200"
               />
             </div>
 
@@ -95,7 +95,7 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="min. 8 chars, 1 letter, 1 digit"
-                className="w-full rounded-xl border border-white/[0.08] bg-[#181818] px-4 py-3.5 min-h-[48px] text-sm text-white placeholder:text-[#cbd5e1]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#181818] transition-all duration-200"
+                className="w-full rounded-xl border border-white/[0.08] bg-[#181818] px-4 py-3.5 min-h-[48px] text-sm text-white placeholder:text-[#cbd5e1]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0ea5e9] focus-visible:ring-offset-2 focus-visible:ring-offset-[#181818] transition-all duration-200"
               />
               <p className="text-xs text-[#cbd5e1]/40 pl-0.5">At least 8 characters, including a letter and a digit.</p>
             </div>
@@ -117,7 +117,7 @@ export default function RegisterPage() {
 
           <p className="mt-6 text-center text-sm text-[#cbd5e1]/50">
             Already have an account?{" "}
-            <Link href="/login" className="inline-flex items-center gap-1 px-2 -mx-2 rounded-lg text-[#F97316] font-bold hover:text-[#FB923C] hover:underline underline-offset-4 transition-colors duration-200">
+            <Link href="/login" className="inline-flex items-center gap-1 px-2 -mx-2 rounded-lg min-h-[44px] text-[#F97316] font-bold hover:text-[#FB923C] hover:underline underline-offset-4 transition-colors duration-200">
               Sign in
             </Link>
           </p>
