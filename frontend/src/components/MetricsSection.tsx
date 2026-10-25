@@ -38,12 +38,20 @@ export default function MetricsSection({
   projectId,
   serviceId,
   monitorId,
+  anchorId,
 }: {
   title: string;
   organizationId: string;
   projectId: string;
   serviceId: string;
   monitorId?: string;
+  /**
+   * `id` aplicado na raiz da seção — alvo da âncora da navegação central da
+   * home (`#metrics`). Só a instância de MÉTRICAS DE SERVIÇO recebe
+   * `anchorId="metrics"` (a instância de monitor, dentro do `MonitorsPanel`,
+   * não recebe): como apenas um serviço fica expandido por vez, o id é único.
+   */
+  anchorId?: string;
 }) {
   const rangeSelectId = useId();
 
@@ -96,7 +104,7 @@ export default function MetricsSection({
   const summary = data?.summary;
 
   return (
-    <div className="mt-2 border-t border-(--border) pt-3">
+    <div id={anchorId} className="mt-2 border-t border-(--border) pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-(--muted)">
           {title}
@@ -110,7 +118,7 @@ export default function MetricsSection({
             value={range}
             onChange={(event) => setRange(event.target.value as MetricsRange)}
             disabled={status === "loading"}
-            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           >
             {METRICS_RANGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -142,25 +150,25 @@ export default function MetricsSection({
           <>
             {/* Resumo da janela — taxas vêm do servidor; null → "—", nunca 0 */}
             <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-md border border-(--border) bg-(--background) px-2 py-1.5">
+              <div className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5">
                 <dt className="text-xs text-(--muted)">Availability</dt>
                 <dd className="text-sm font-semibold text-white">
                   {formatPercent(summary.availability)}
                 </dd>
               </div>
-              <div className="rounded-md border border-(--border) bg-(--background) px-2 py-1.5">
+              <div className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5">
                 <dt className="text-xs text-(--muted)">Success rate</dt>
                 <dd className="text-sm font-semibold text-white">
                   {formatPercent(summary.successRate)}
                 </dd>
               </div>
-              <div className="rounded-md border border-(--border) bg-(--background) px-2 py-1.5">
+              <div className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5">
                 <dt className="text-xs text-(--muted)">Avg latency</dt>
                 <dd className="text-sm font-semibold text-white">
                   {formatAvgMillis(summary.avgLatencyMs)}
                 </dd>
               </div>
-              <div className="rounded-md border border-(--border) bg-(--background) px-2 py-1.5">
+              <div className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5">
                 <dt className="text-xs text-(--muted)">Checks</dt>
                 <dd className="text-sm font-semibold text-white">
                   {summary.totalChecks}

@@ -19,6 +19,12 @@ import AlertRulesPanel from "@/components/AlertRulesPanel";
 import IncidentsPanel from "@/components/IncidentsPanel";
 import MetricsSection from "@/components/MetricsSection";
 import MonitorsPanel from "@/components/MonitorsPanel";
+import {
+  announceExpandDone,
+  clearPendingExpand,
+  onExpandRequest,
+  peekPendingExpand,
+} from "@/components/section-nav";
 
 type ServicesStatus = "idle" | "loading" | "ready" | "error";
 
@@ -174,6 +180,60 @@ export default function ServicesPanel({
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  /**
+   * Expansão pedida pela navegação central da home (âncora `#metrics`): o menu
+   * só rola até as métricas depois que o conteúdo aparece, então o primeiro
+   * serviço é expandido aqui quando há pedido pendente.
+   *
+   * Roda no mount (este painel só existe depois que o projeto foi expandido)
+   * e a cada mudança de lista: o pedido pode chegar ANTES do fetch terminar —
+   * nesse caso não consumimos e reavaliamos quando o load termina.
+   *
+   * Todos os caminhos CONCLUEM o pedido (`announceExpandDone`): é o desfecho
+   * determinístico que o scroll da nav aguarda. Sem serviços (ou em erro) o
+   * fallback é o próprio `#services` — a seção que mostra "No services yet" /
+   * o erro com Retry. `#projects` NUNCA é usado aqui: há projetos (senão o
+   * `ProjectsPanel` já teria encerrado o pedido).
+   *
+   * "Serviço já expandido" é decidido pelo DOM (`#metrics`), não por
+   * `expandedId`: com filtro ativo a linha pode ter saído da página visível e
+   * aí o primeiro serviço VISÍVEL é quem expande.
+   */
+  useEffect(() => {
+    function tryExpandFirstService(): void {
+      if (peekPendingExpand() !== "metrics") return;
+
+      if (status === "error") {
+        clearPendingExpand("metrics");
+        announceExpandDone({ status: "unavailable", fallbackId: "services" });
+        return;
+      }
+      if (status !== "ready") return;
+
+      if (document.getElementById("metrics")) {
+        clearPendingExpand("metrics");
+        announceExpandDone({ status: "expanded" });
+        return;
+      }
+
+      const first = services[0];
+      if (!first) {
+        clearPendingExpand("metrics");
+        announceExpandDone({ status: "unavailable", fallbackId: "services" });
+        return;
+      }
+
+      setExpandedId(first.id);
+      setEditForm({ name: first.name, description: first.description ?? "" });
+      setEditError(null);
+      clearPendingExpand("metrics");
+      announceExpandDone({ status: "expanded" });
+    }
+
+    tryExpandFirstService();
+    return onExpandRequest(tryExpandFirstService);
+  }, [status, services, expandedId]);
 
   // Listagem — recarrega em mudança de página, filtro, projeto ou reload.
   useEffect(() => {
@@ -348,12 +408,15 @@ export default function ServicesPanel({
   }
 
   return (
-    <section className="mt-3 rounded-md border border-(--border) bg-(--card) p-4">
+    <section
+      id="services"
+      className="mt-3 rounded-md border border-(--border) bg-(--card) p-4"
+    >
       <h3 className="font-semibold text-white">Services — {project.name}</h3>
 
       {/* Projeto inativo → leitura ok, mutação devolve 409 PROJECT_INACTIVE */}
       {!project.active && (
-        <p className="mt-2 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--muted)">
+        <p className="mt-2 rounded-md border border-(--border) bg-(--surface) px-3 py-2 text-sm text-(--muted)">
           <span className="font-medium text-white">
             This project is inactive;
           </span>{" "}
@@ -382,7 +445,7 @@ export default function ServicesPanel({
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           placeholder="Search by name…"
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label
           htmlFor={`service-active-filter-${project.id}`}
@@ -397,7 +460,7 @@ export default function ServicesPanel({
             setActiveFilter(event.target.value as ServiceActiveFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           <option value="active">Active</option>
@@ -416,7 +479,7 @@ export default function ServicesPanel({
             setStatusFilter(event.target.value as ServiceStatusFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All statuses</option>
           {SERVICE_STATUS_OPTIONS.map((option) => (
@@ -507,7 +570,7 @@ export default function ServicesPanel({
                     {isExpanded && (
                       <tr className="border-b border-(--border)/30">
                         <td colSpan={3} className="py-3 pr-3">
-                          <div className="flex flex-col gap-2 rounded-md border border-(--border) bg-(--background) p-3">
+                          <div className="flex flex-col gap-2 rounded-md border border-(--border) bg-(--surface) p-3">
                             <p className="text-sm text-(--muted)">
                               {service.description ?? "No description."}
                             </p>
@@ -545,7 +608,7 @@ export default function ServicesPanel({
                                     }))
                                   }
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <label
                                   htmlFor={`service-edit-description-${service.id}`}
@@ -564,7 +627,7 @@ export default function ServicesPanel({
                                   }
                                   placeholder="Description (optional)"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <div className="flex flex-wrap items-center gap-2">
                                   <button
@@ -609,6 +672,7 @@ export default function ServicesPanel({
                               organizationId={orgId}
                               projectId={projectId}
                               serviceId={service.id}
+                              anchorId="metrics"
                             />
 
                             {/* Alert Rules do serviço (Prompt 12) — monta/
@@ -716,7 +780,7 @@ export default function ServicesPanel({
               }
               placeholder="New service name"
               disabled={busy}
-              className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
             <button
               type="submit"
@@ -743,7 +807,7 @@ export default function ServicesPanel({
             }
             placeholder="Description (optional)"
             disabled={busy}
-            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           />
           {createError && (
             <p className="text-sm text-(--destructive)">{createError}</p>

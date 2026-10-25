@@ -3,15 +3,30 @@
 import { useEffect, useState } from "react";
 import { checkHealth, API_URL } from "@/lib/api";
 
+/** Status de saúde exposto ao componente pai (o card "Backend" da home). */
+export type HealthStatusValue = "up" | "down" | "unreachable";
+
 interface HealthStatusProps {
   /** Optional override for the API URL (useful for testing/staging) */
   apiUrl?: string;
+  /**
+   * Reporta o status real de saúde ao componente pai.
+   *
+   * Quando informada o componente vira **headless** (mesmo padrão do
+   * `AuthStatus`): o `checkHealth()` continua rodando UMA vez aqui, o chip
+   * não é renderizado e o valor aparece na apresentação do pai — assim não há
+   * chip duplicado nem segundo `checkHealth()` na mesma tela.
+   * Sem a prop, o comportamento (chip "Backend: UP/DOWN/unreachable") é o
+   * mesmo de sempre.
+   */
+  onStatusChange?: (status: HealthStatusValue) => void;
 }
 
-export default function HealthStatus({ apiUrl }: HealthStatusProps = {}) {
-  const [status, setStatus] = useState<"up" | "down" | "unreachable" | null>(
-    null
-  );
+export default function HealthStatus({
+  apiUrl,
+  onStatusChange,
+}: HealthStatusProps = {}) {
+  const [status, setStatus] = useState<HealthStatusValue | null>(null);
 
   // Dependency extracted for ESLint exhaustive-deps check
   const checkDeps = apiUrl || API_URL;
@@ -35,6 +50,20 @@ export default function HealthStatus({ apiUrl }: HealthStatusProps = {}) {
       cancelled = true;
     };
   }, [checkDeps]);
+
+  /**
+   * Reporta o status ao pai (quando a prop existe) — efeito separado do fetch
+   * para a identidade do callback não re-disparar o `checkHealth()`.
+   */
+  useEffect(() => {
+    if (status === null) return;
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
+
+  // Headless: o pai é quem apresenta o status (card "Backend" da home).
+  if (onStatusChange) {
+    return null;
+  }
 
   if (status === null) {
     return null; // loading state: nothing rendered until first fetch completes
