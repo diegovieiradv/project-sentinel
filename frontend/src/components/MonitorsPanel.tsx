@@ -550,7 +550,7 @@ export default function MonitorsPanel({
   }
 
   return (
-    <section className="mt-3 rounded-md border border-(--border) bg-(--background) p-3">
+    <section className="mt-3 rounded-md border border-(--border) bg-(--surface) p-3">
       <h4 className="font-semibold text-white">Monitors — {service.name}</h4>
 
       {/* Serviço inativo → leitura ok; criar/editar/ativar devolvem 409
@@ -760,7 +760,7 @@ export default function MonitorsPanel({
                                   }
                                   placeholder="Monitor name"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <label
                                   htmlFor={`monitor-edit-url-${monitor.id}`}
@@ -780,7 +780,7 @@ export default function MonitorsPanel({
                                   }
                                   placeholder="https://example.com/health"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <div className="flex flex-wrap items-end gap-2">
                                   <span className="flex flex-col gap-1">
@@ -801,7 +801,7 @@ export default function MonitorsPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                      className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     >
                                       {MONITOR_METHOD_OPTIONS.map((option) => (
                                         <option key={option} value={option}>
@@ -831,7 +831,7 @@ export default function MonitorsPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="w-28 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                      className="w-28 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     />
                                     <span className="text-xs text-(--muted)">
                                       {INTERVAL_MIN}–{INTERVAL_MAX}s, default{" "}
@@ -859,7 +859,7 @@ export default function MonitorsPanel({
                                         }))
                                       }
                                       disabled={busy}
-                                      className="w-32 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                      className="w-32 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                     />
                                     <span className="text-xs text-(--muted)">
                                       {TIMEOUT_MIN}–{TIMEOUT_MAX}ms, default{" "}
@@ -967,7 +967,7 @@ export default function MonitorsPanel({
                                   {checks.map((check) => (
                                     <li
                                       key={check.id}
-                                      className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) bg-(--background) px-2 py-1.5 text-xs"
+                                      className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) bg-(--surface) px-2 py-1.5 text-xs"
                                     >
                                       <CheckOutcomeBadge
                                         outcome={check.outcome}
@@ -1107,7 +1107,7 @@ export default function MonitorsPanel({
                 }
                 placeholder="New monitor name"
                 disabled={busy}
-                className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -1129,7 +1129,7 @@ export default function MonitorsPanel({
                 }
                 placeholder="https://example.com/health"
                 disabled={busy}
-                className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
             </span>
           </div>
@@ -1152,7 +1152,7 @@ export default function MonitorsPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 {MONITOR_METHOD_OPTIONS.map((option) => (
                   <option key={option} value={option}>
@@ -1182,7 +1182,7 @@ export default function MonitorsPanel({
                   }))
                 }
                 disabled={busy}
-                className="w-28 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                className="w-28 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
               <span className="text-xs text-(--muted)">
                 {INTERVAL_MIN}–{INTERVAL_MAX}s, default {INTERVAL_DEFAULT}
@@ -1209,7 +1209,7 @@ export default function MonitorsPanel({
                   }))
                 }
                 disabled={busy}
-                className="w-32 rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                className="w-32 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
               <span className="text-xs text-(--muted)">
                 {TIMEOUT_MIN}–{TIMEOUT_MAX}ms, default {TIMEOUT_DEFAULT}

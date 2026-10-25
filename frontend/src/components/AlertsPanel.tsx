@@ -184,7 +184,7 @@ export default function AlertsPanel({ service }: { service: ServiceResponse }) {
               setStatusFilter(event.target.value as AlertStatusFilter);
               setPage(0);
             }}
-            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
+            className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
           >
             <option value="all">All</option>
             {ALERT_STATUS_OPTIONS.map((option) => (
@@ -207,7 +207,7 @@ export default function AlertsPanel({ service }: { service: ServiceResponse }) {
               setSeverityFilter(event.target.value as AlertSeverity | "all");
               setPage(0);
             }}
-            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
+            className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
           >
             <option value="all">All</option>
             {ALERT_SEVERITY_OPTIONS.map((option) => (

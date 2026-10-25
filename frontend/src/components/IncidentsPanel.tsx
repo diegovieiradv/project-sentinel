@@ -246,7 +246,7 @@ export default function IncidentsPanel({
 
       {/* Serviço inativo → leitura ok, mutação devolve 409 SERVICE_INACTIVE */}
       {!service.active && (
-        <p className="mt-2 rounded-md border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--muted)">
+        <p className="mt-2 rounded-md border border-(--border) bg-(--surface) px-3 py-2 text-sm text-(--muted)">
           <span className="font-medium text-white">This service is inactive;</span>{" "}
           incidents can be viewed but not modified.
         </p>
@@ -279,7 +279,7 @@ export default function IncidentsPanel({
             setExpandedId(null);
           }}
           disabled={busy}
-          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           {INCIDENT_STATUS_OPTIONS.map((option) => (
@@ -304,7 +304,7 @@ export default function IncidentsPanel({
             setExpandedId(null);
           }}
           disabled={busy}
-          className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           {INCIDENT_SEVERITY_OPTIONS.map((severity) => (
@@ -513,7 +513,7 @@ export default function IncidentsPanel({
               placeholder="Checkout returning HTTP 500"
               maxLength={200}
               disabled={busy}
-              className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+              className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
           </div>
 
@@ -535,7 +535,7 @@ export default function IncidentsPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               >
                 {INCIDENT_SEVERITY_OPTIONS.map((severity) => (
                   <option key={severity} value={severity}>
@@ -562,7 +562,7 @@ export default function IncidentsPanel({
                   }))
                 }
                 disabled={busy}
-                className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
               />
               <p className="text-xs text-(--muted)">
                 Leave empty to use the current time.
@@ -590,7 +590,7 @@ export default function IncidentsPanel({
               maxLength={4000}
               placeholder="Optional — impact, scope, first signals…"
               disabled={busy}
-              className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+              className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
           </div>
 

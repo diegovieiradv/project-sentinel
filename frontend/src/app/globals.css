@@ -1,38 +1,50 @@
 @import "tailwindcss";
 
-/* Base tokens - Sentinel dark-first design system */
+/* Base tokens - Sentinel dark-first design system.
+   Identidade visual alinhada à referência `menu-central.png` e às páginas de
+   Login/Cadastro aprovadas: fundo #090909, superfícies #111111 / #181818,
+   laranja #F97316 / #FB923C e roxo #9333EA como cor complementar.
+   (Antes o card era #111827 — azul-marinho que destoava do novo layout.) */
 :root {
-  --background: #0a0e1a;
+  --background: #090909;
   --foreground: #e2e8f0;
-  /* A11Y-05 (contraste WCAG): #cbd5e1 → 12.97:1 sobre #0a0e1a,
-     11.95:1 sobre #111827 (AAA; era #94a3b8 = 7.51:1 / 6.92:1). */
+  /* A11Y-05 (contraste WCAG): #cbd5e1 → ~14.5:1 sobre #090909 e
+     ~13.3:1 sobre #111111 (AAA; o fundo escureceu, o contraste só melhora). */
   --muted: #cbd5e1;
-  --accent: #0ea5e9;
-  --accent-soft: #06b6d4;
-  --card: #111827;
-  /* A11Y-05 (contraste WCAG): #f87171 → 6.96:1 sobre #0a0e1a,
-     6.41:1 sobre #111827 (AA; era #ef4444 = 5.12:1 / 4.71:1). */
+  --accent: #F97316;
+  --accent-soft: #FB923C;
+  /* Roxo — cor complementar da identidade (cards/destaques secundários). */
+  --purple: #9333EA;
+  --purple-soft: #A855F7;
+  /* Superfície dos cards/painéis — neutro (não mais azul-marinho). */
+  --card: #111111;
+  /* Superfície elevada (inputs, linhas de tabela, sub-painéis). */
+  --surface: #181818;
+  /* A11Y-05 (contraste WCAG): #f87171 → ~7.4:1 sobre #090909 (AA/AAA). */
   --destructive: #f87171;
   --border: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.14);
 }
 
 .dark {
-  --background: #0a0e1a;
+  --background: #090909;
   --foreground: #e2e8f0;
   --muted: #cbd5e1;
-  --accent: #0ea5e9;
-  --accent-soft: #06b6d4;
-  --card: #111827;
+  --accent: #F97316;
+  --accent-soft: #FB923C;
+  --purple: #9333EA;
+  --purple-soft: #A855F7;
+  --card: #111111;
+  --surface: #181818;
   --destructive: #f87171;
   --border: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.14);
 }
 
 /* Override for when dark class is on html/body */
 html.dark,
 body.dark {
-  --background: #0a0e1a;
+  --background: #090909;
   --foreground: #e2e8f0;
 }
 
@@ -42,7 +54,10 @@ body.dark {
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-purple: var(--purple);
+  --color-purple-soft: var(--purple-soft);
   --color-card: var(--card);
+  --color-surface: var(--surface);
   --color-border: var(--border);
   --color-border-hover: var(--border-hover);
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

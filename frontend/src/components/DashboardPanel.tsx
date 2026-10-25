@@ -115,7 +115,7 @@ export default function DashboardPanel({
               }
             }}
             disabled={status === "loading"}
-            className="rounded-md border border-(--border) bg-(--background) px-3 py-3 min-h-[44px] text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           >
             {METRICS_RANGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -165,7 +165,7 @@ export default function DashboardPanel({
                   {dashboardKpis(data).map((kpi) => (
                     <div
                       key={kpi.label}
-                      className="rounded-md border border-(--border) bg-(--background) px-2 py-1.5"
+                      className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5"
                     >
                       <dt className="text-xs text-(--muted)">{kpi.label}</dt>
                       <dd className="text-sm font-semibold text-white">
@@ -181,7 +181,7 @@ export default function DashboardPanel({
                   {DASHBOARD_HEALTH_TILES.map((tile) => (
                     <div
                       key={tile.key}
-                      className="rounded-md border border-(--border) bg-(--background) px-2 py-1.5"
+                      className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5"
                     >
                       <dt className="text-xs text-(--muted)">{tile.label}</dt>
                       <dd className="text-sm font-semibold text-white">

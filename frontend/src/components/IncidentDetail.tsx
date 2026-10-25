@@ -393,7 +393,7 @@ export default function IncidentDetail({
   const dirty = hasIncidentContentChanges(incident, draft);
 
   return (
-    <div className="flex flex-col gap-4 rounded-md border border-(--border) bg-(--background) p-3">
+    <div className="flex flex-col gap-4 rounded-md border border-(--border) bg-(--surface) p-3">
       {/* ---------------------------------------------------------------- */}
       {/* Estado — badges + fatos imutáveis                                 */}
       {/* ---------------------------------------------------------------- */}
