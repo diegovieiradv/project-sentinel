@@ -46,3 +46,13 @@ docker-compose.override.yml
 backups/
 *.dump
 *.dump.sha256
+
+# Backups de edição local (não versionar)
+*.bak
+*.bak.*
+
+# Artefatos e capturas locais do frontend (contem dados sensiveis / nao usados pelo codigo)
+frontend/.screenshots/
+frontend/test-results/
+frontend/public/menu-central.png
+frontend/public/login-cadastro-reference.png
