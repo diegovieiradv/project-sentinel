@@ -150,32 +150,40 @@ export default function MetricsSection({
           <>
             {/* Resumo da janela — taxas vêm do servidor; null → "—", nunca 0 */}
             <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5">
-                <dt className="text-xs text-(--muted)">Availability</dt>
-                <dd className="text-sm font-semibold text-white">
-                  {formatPercent(summary.availability)}
-                </dd>
+              <div className="flex flex-col items-center text-center rounded-2xl border border-(--border) bg-(--surface) p-4 transition hover:border-(--border-hover)">
+                <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full ring-2 ring-emerald-500/30">
+                  <div className="h-6 w-6 rounded-full bg-emerald-500" />
+                </div>
+                <dt className="text-[10px] uppercase tracking-wider text-(--muted) font-medium">Availability</dt>
+                <dd className="mt-0.5 text-lg font-bold text-white">{formatPercent(summary.availability)}</dd>
               </div>
-              <div className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5">
-                <dt className="text-xs text-(--muted)">Success rate</dt>
-                <dd className="text-sm font-semibold text-white">
-                  {formatPercent(summary.successRate)}
-                </dd>
+              <div className="flex flex-col items-center text-center rounded-2xl border border-(--border) bg-(--surface) p-4 transition hover:border-(--border-hover)">
+                <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full ring-2 ring-blue-500/30">
+                  <div className="h-6 w-6 rounded-full bg-blue-500" />
+                </div>
+                <dt className="text-[10px] uppercase tracking-wider text-(--muted) font-medium">Success rate</dt>
+                <dd className="mt-0.5 text-lg font-bold text-white">{formatPercent(summary.successRate)}</dd>
               </div>
-              <div className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5">
-                <dt className="text-xs text-(--muted)">Avg latency</dt>
-                <dd className="text-sm font-semibold text-white">
-                  {formatAvgMillis(summary.avgLatencyMs)}
-                </dd>
+              <div className="flex flex-col items-center text-center rounded-2xl border border-(--border) bg-(--surface) p-4 transition hover:border-(--border-hover)">
+                <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full ring-2 ring-amber-500/30">
+                  <div className="h-6 w-6 rounded-full bg-amber-500" />
+                </div>
+                <dt className="text-[10px] uppercase tracking-wider text-(--muted) font-medium">Avg latency</dt>
+                <dd className="mt-0.5 text-lg font-bold text-white">{formatAvgMillis(summary.avgLatencyMs)}</dd>
               </div>
-              <div className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5">
-                <dt className="text-xs text-(--muted)">Checks</dt>
-                <dd className="text-sm font-semibold text-white">
-                  {summary.totalChecks}
-                </dd>
+              <div className="flex flex-col items-center text-center rounded-2xl border border-(--border) bg-(--surface) p-4 transition hover:border-(--border-hover)">
+                <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full ring-2 ring-violet-500/30">
+                  <div className="h-6 w-6 rounded-full bg-violet-500" />
+                </div>
+                <dt className="text-[10px] uppercase tracking-wider text-(--muted) font-medium">Checks</dt>
+                <dd className="mt-0.5 text-lg font-bold text-white">{summary.totalChecks}</dd>
               </div>
             </dl>
 
+            {/* Painel 2 - Historico (grafico + breakdown por monitor) */}
+            <div className="mt-4 pt-3 border-t border-(--border)" aria-label="Painel 2 - Historico de metricas">
+              <p className="text-xs font-semibold uppercase tracking-wide text-(--muted)">Historical series &amp; breakdown</p>
+            </div>
             {/* Contagens brutas — somam exatamente totalChecks (contrato) */}
             <p className="mt-1.5 text-xs text-(--muted)">
               {summary.success} success · {summary.degraded} degraded ·{" "}
