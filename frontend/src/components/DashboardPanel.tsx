@@ -92,10 +92,10 @@ export default function DashboardPanel({
   const sectionTitle = "mt-3 text-xs font-semibold uppercase tracking-wide text-(--muted)";
 
   return (
-    <section className="mt-3 rounded-md border border-(--border) bg-(--card) p-4">
+    <section className="mt-3 rounded-md border border-(--border) bg-[#202D2E] p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="font-semibold text-white">Dashboard</h3>
+          <h3 className="font-semibold text-[#F5F7F5]">Dashboard</h3>
           <p className="mt-1 text-xs text-(--muted)">
             Operational view composed from services, checks, alerts and
             incidents of this project — read-only, no automatic refresh.
@@ -115,7 +115,7 @@ export default function DashboardPanel({
               }
             }}
             disabled={status === "loading"}
-            className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-xs text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           >
             {METRICS_RANGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -127,7 +127,7 @@ export default function DashboardPanel({
             type="button"
             onClick={() => setReload((count) => count + 1)}
             disabled={status === "loading"}
-            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
           >
             {status === "loading" ? "Loading…" : "Refresh"}
           </button>
@@ -144,7 +144,7 @@ export default function DashboardPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-[#F5F7F5]"
           >
             Retry
           </button>
@@ -165,10 +165,10 @@ export default function DashboardPanel({
                   {dashboardKpis(data).map((kpi) => (
                     <div
                       key={kpi.label}
-                      className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5"
+                      className="rounded-md border border-(--border) bg-[#2D4143] px-2 py-1.5"
                     >
                       <dt className="text-xs text-(--muted)">{kpi.label}</dt>
-                      <dd className="text-sm font-semibold text-white">
+                      <dd className="text-sm font-semibold text-[#F5F7F5]">
                         {kpi.value}
                       </dd>
                     </div>
@@ -181,10 +181,10 @@ export default function DashboardPanel({
                   {DASHBOARD_HEALTH_TILES.map((tile) => (
                     <div
                       key={tile.key}
-                      className="rounded-md border border-(--border) bg-(--surface) px-2 py-1.5"
+                      className="rounded-md border border-(--border) bg-[#2D4143] px-2 py-1.5"
                     >
                       <dt className="text-xs text-(--muted)">{tile.label}</dt>
-                      <dd className="text-sm font-semibold text-white">
+                      <dd className="text-sm font-semibold text-[#F5F7F5]">
                         {data.health[tile.key]}
                       </dd>
                     </div>
@@ -197,7 +197,7 @@ export default function DashboardPanel({
 
                 {/* Alertas em FIRING — total, severidades e top 10 */}
                 <h4 className={sectionTitle}>Alerts</h4>
-                <p className="mt-1 text-sm text-white">
+                <p className="mt-1 text-sm text-[#F5F7F5]">
                   {pluralizeCount(data.alerts.firingTotal, "firing alert")}
                 </p>
                 <p className="text-xs text-(--muted)">
@@ -227,7 +227,7 @@ export default function DashboardPanel({
                                 {severityLabel(alert.severity)}
                               </span>
                             </td>
-                            <td className="py-1 pr-2 font-medium text-white">
+                            <td className="py-1 pr-2 font-medium text-[#F5F7F5]">
                               {alert.ruleName}
                             </td>
                             <td className="py-1 pr-2 text-(--muted)">
@@ -252,7 +252,7 @@ export default function DashboardPanel({
 
                 {/* Incidentes ativos — nunca inclui RESOLVED */}
                 <h4 className={sectionTitle}>Incidents</h4>
-                <p className="mt-1 text-sm text-white">
+                <p className="mt-1 text-sm text-[#F5F7F5]">
                   {pluralizeCount(data.incidents.activeTotal, "active incident")}
                 </p>
                 <p className="text-xs text-(--muted)">
@@ -292,7 +292,7 @@ export default function DashboardPanel({
                             <td className="py-1 pr-2 text-(--muted)">
                               {incidentStatusLabel(incident.status)}
                             </td>
-                            <td className="py-1 pr-2 font-medium text-white">
+                            <td className="py-1 pr-2 font-medium text-[#F5F7F5]">
                               {incident.title}
                             </td>
                             <td className="py-1 pr-2 text-(--muted)">
@@ -334,7 +334,7 @@ export default function DashboardPanel({
                             key={service.serviceId}
                             className="border-b border-(--border)/30"
                           >
-                            <td className="py-1 pr-2 font-medium text-white">
+                            <td className="py-1 pr-2 font-medium text-[#F5F7F5]">
                               {service.serviceName}
                             </td>
                             <td className="py-1 pr-2 text-(--muted)">
@@ -381,7 +381,7 @@ export default function DashboardPanel({
                         <span className="text-(--muted)">
                           {formatActivityTime(item.timestamp)}
                         </span>
-                        <span className="font-medium text-white">
+                        <span className="font-medium text-[#F5F7F5]">
                           {DASHBOARD_ACTIVITY_LABELS[item.type]}
                         </span>
                         {item.severity && (

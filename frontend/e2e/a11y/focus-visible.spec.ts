@@ -27,6 +27,10 @@ test.describe("A11Y-01 focus-visible", () => {
     const focusedId = await page.evaluate(() => document.activeElement?.id);
     expect(focusedId).toBe("email");
 
+    // Aguarda o settle da transição Transition-all (200ms) do anel de foco;
+    // sem isso o boxShadow é capturado a meio-caminho (opacidade < 1).
+    await page.waitForTimeout(300);
+
     const email = await page.locator("#email").evaluate((el) => ({
       focusVisible: el.matches(":focus-visible"),
       boxShadow: getComputedStyle(el).boxShadow,
@@ -38,19 +42,20 @@ test.describe("A11Y-01 focus-visible", () => {
     // …mas o anel focus-visible existe.
     expect(email.focusVisible).toBe(true);
     expect(email.boxShadow).not.toBe("none");
-    // --accent  #0ea5e9 → rgb(14, 165, 233)
-    expect(email.boxShadow).toContain("rgb(14, 165, 233)");
-    // --background #0a0e1a → rgb(10, 14, 26) (ring-offset)
-    expect(email.boxShadow).toContain("rgb(10, 14, 26)");
+    // --accent  #0ea5e9 → rgb(176, 243, 92)
+    expect(email.boxShadow).toContain("rgb(176, 243, 92)");
+    // UI-UX-V2: ring-offset = fundo do login #192526 → rgb(25, 37, 38)
+    expect(email.boxShadow).toContain("rgb(25, 37, 38)");
 
     // Segundo Tab → password também ganha o anel.
     await page.keyboard.press("Tab");
+    await page.waitForTimeout(300);
     const password = await page.locator("#password").evaluate((el) => ({
       focusVisible: el.matches(":focus-visible"),
       boxShadow: getComputedStyle(el).boxShadow,
     }));
     expect(password.focusVisible).toBe(true);
-    expect(password.boxShadow).toContain("rgb(14, 165, 233)");
+    expect(password.boxShadow).toContain("rgb(176, 243, 92)");
   });
 
   test("nenhum componente guarda focus:outline-none sem focus-visible", async ({

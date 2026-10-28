@@ -96,7 +96,7 @@ function ActiveBadge({ active }: { active: boolean }) {
     <span
       className={
         active
-          ? "rounded bg-(--accent) px-1.5 py-0.5 text-xs font-semibold text-white"
+          ? "rounded bg-(--accent) px-1.5 py-0.5 text-xs font-semibold text-[#F5F7F5]"
           : "rounded border border-(--border) px-1.5 py-0.5 text-xs font-semibold text-(--muted)"
       }
     >
@@ -410,14 +410,14 @@ export default function ServicesPanel({
   return (
     <section
       id="services"
-      className="mt-3 rounded-md border border-(--border) bg-(--card) p-4"
+      className="mt-3 rounded-md border border-(--border) bg-[#202D2E] p-4"
     >
-      <h3 className="font-semibold text-white">Services — {project.name}</h3>
+      <h3 className="font-semibold text-[#F5F7F5]">Services — {project.name}</h3>
 
       {/* Projeto inativo → leitura ok, mutação devolve 409 PROJECT_INACTIVE */}
       {!project.active && (
-        <p className="mt-2 rounded-md border border-(--border) bg-(--surface) px-3 py-2 text-sm text-(--muted)">
-          <span className="font-medium text-white">
+        <p className="mt-2 rounded-md border border-(--border) bg-[#2D4143] px-3 py-2 text-sm text-(--muted)">
+          <span className="font-medium text-[#F5F7F5]">
             This project is inactive;
           </span>{" "}
           services can be viewed but not modified.
@@ -427,10 +427,10 @@ export default function ServicesPanel({
       {project.role === "VIEWER" && (
         <p className="mt-2 text-sm text-(--muted)">
           Your role in this organization is{" "}
-          <span className="font-medium text-white">VIEWER</span>. You can view
+          <span className="font-medium text-[#F5F7F5]">VIEWER</span>. You can view
           services; creating, editing and activation require the{" "}
-          <span className="font-medium text-white">ADMIN</span> or{" "}
-          <span className="font-medium text-white">OPERATOR</span> role.
+          <span className="font-medium text-[#F5F7F5]">ADMIN</span> or{" "}
+          <span className="font-medium text-[#F5F7F5]">OPERATOR</span> role.
         </p>
       )}
 
@@ -445,7 +445,7 @@ export default function ServicesPanel({
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           placeholder="Search by name…"
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label
           htmlFor={`service-active-filter-${project.id}`}
@@ -460,7 +460,7 @@ export default function ServicesPanel({
             setActiveFilter(event.target.value as ServiceActiveFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All</option>
           <option value="active">Active</option>
@@ -479,7 +479,7 @@ export default function ServicesPanel({
             setStatusFilter(event.target.value as ServiceStatusFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All statuses</option>
           {SERVICE_STATUS_OPTIONS.map((option) => (
@@ -499,7 +499,7 @@ export default function ServicesPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-[#F5F7F5]"
           >
             Retry
           </button>
@@ -528,7 +528,7 @@ export default function ServicesPanel({
                 return (
                   <Fragment key={service.id}>
                     <tr className="border-b border-(--border)/30">
-                      <td className="py-2 pr-3 font-medium text-white">
+                      <td className="py-2 pr-3 font-medium text-[#F5F7F5]">
                         {service.name}
                       </td>
                       <td className="py-2 pr-3">
@@ -546,7 +546,7 @@ export default function ServicesPanel({
                             onClick={() => onToggleDetails(service)}
                             aria-expanded={isExpanded}
                             disabled={busy}
-                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
                           >
                             {isExpanded ? "Close" : "Details"}
                           </button>
@@ -554,7 +554,7 @@ export default function ServicesPanel({
                             type="button"
                             onClick={() => void onToggleActivation(service)}
                             disabled={!canManage || busy}
-                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
                           >
                             {togglingId === service.id
                               ? "Saving…"
@@ -570,7 +570,7 @@ export default function ServicesPanel({
                     {isExpanded && (
                       <tr className="border-b border-(--border)/30">
                         <td colSpan={3} className="py-3 pr-3">
-                          <div className="flex flex-col gap-2 rounded-md border border-(--border) bg-(--surface) p-3">
+                          <div className="flex flex-col gap-2 rounded-md border border-(--border) bg-[#2D4143] p-3">
                             <p className="text-sm text-(--muted)">
                               {service.description ?? "No description."}
                             </p>
@@ -608,7 +608,7 @@ export default function ServicesPanel({
                                     }))
                                   }
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <label
                                   htmlFor={`service-edit-description-${service.id}`}
@@ -627,7 +627,7 @@ export default function ServicesPanel({
                                   }
                                   placeholder="Description (optional)"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <div className="flex flex-wrap items-center gap-2">
                                   <button
@@ -635,7 +635,7 @@ export default function ServicesPanel({
                                     disabled={
                                       busy || editForm.name.trim() === ""
                                     }
-                                    className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                                    className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-[#F5F7F5] transition hover:opacity-90 disabled:opacity-50"
                                   >
                                     {saving ? "Saving…" : "Save changes"}
                                   </button>
@@ -646,7 +646,7 @@ export default function ServicesPanel({
                                       setEditError(null);
                                     }}
                                     disabled={busy}
-                                    className="rounded-md border border-(--border) px-4 py-3 min-h-[44px] text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    className="rounded-md border border-(--border) px-4 py-3 min-h-[44px] text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
                                   >
                                     Close
                                   </button>
@@ -727,7 +727,7 @@ export default function ServicesPanel({
                 type="button"
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
                 disabled={page === 0 || busy}
-                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
               >
                 Previous
               </button>
@@ -735,7 +735,7 @@ export default function ServicesPanel({
                 type="button"
                 onClick={() => setPage((current) => current + 1)}
                 disabled={page + 1 >= totalPages || busy}
-                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
               >
                 Next
               </button>
@@ -780,12 +780,12 @@ export default function ServicesPanel({
               }
               placeholder="New service name"
               disabled={busy}
-              className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={busy || createForm.name.trim() === ""}
-              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-[#F5F7F5] transition hover:opacity-90 disabled:opacity-50"
             >
               {creating ? "Creating…" : "Create service"}
             </button>
@@ -807,7 +807,7 @@ export default function ServicesPanel({
             }
             placeholder="Description (optional)"
             disabled={busy}
-            className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           />
           {createError && (
             <p className="text-sm text-(--destructive)">{createError}</p>
