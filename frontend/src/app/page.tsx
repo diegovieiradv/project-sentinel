@@ -102,7 +102,7 @@ function SectionHeading({
   tone?: "accent" | "purple";
 }) {
   return (
-    <h2 className="flex items-center gap-2.5 text-base font-semibold text-white">
+    <h2 className="flex items-center gap-2.5 text-base font-semibold text-[#F5F7F5]">
       <span
         aria-hidden="true"
         className={`h-4 w-1 shrink-0 rounded-full ${
@@ -311,14 +311,14 @@ function MembersPanel({
     return (
       <section
         id="members"
-        className="rounded-xl border border-(--border) bg-(--card) p-4 md:p-6"
+        className="rounded-xl border border-(--border) bg-[#202D2E] p-4 md:p-6"
       >
         <SectionHeading tone="purple">Members — {org.name}</SectionHeading>
-        <p className="mt-2 text-sm text-(--muted)">
+        <p className="mt-2 text-sm text-[#A7B3B3]">
           Your role in this organization is{" "}
-          <span className="font-medium text-white">{org.role}</span>. Viewing
+          <span className="font-medium text-[#F5F7F5]">{org.role}</span>. Viewing
           and managing members requires the{" "}
-          <span className="font-medium text-white">ADMIN</span> role.
+          <span className="font-medium text-[#F5F7F5]">ADMIN</span> role.
         </p>
       </section>
     );
@@ -327,7 +327,7 @@ function MembersPanel({
   return (
     <section
       id="members"
-      className="rounded-xl border border-(--border) bg-(--card) p-4 md:p-6"
+      className="rounded-xl border border-(--border) bg-[#202D2E] p-4 md:p-6"
     >
       <SectionHeading tone="purple">Members — {org.name}</SectionHeading>
 
@@ -339,20 +339,20 @@ function MembersPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5]"
           >
             Retry
           </button>
         </div>
       ) : status === "ready" && members.length === 0 ? (
-        <p className="mt-2 text-sm text-(--muted)">
+        <p className="mt-2 text-sm text-[#A7B3B3]">
           No members yet — add the first one below.
         </p>
       ) : status === "ready" ? (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-(--border) text-left text-(--muted)">
+              <tr className="border-b border-(--border) text-left text-[#A7B3B3]">
                 <th className="py-2 pr-3 font-medium">Name</th>
                 <th className="py-2 pr-3 font-medium">Email</th>
                 <th className="py-2 pr-3 font-medium">Role</th>
@@ -365,10 +365,10 @@ function MembersPanel({
                   key={member.membershipId}
                   className="border-b border-(--border)/30"
                 >
-                  <td className="py-2 pr-3 font-medium text-white">
+                  <td className="py-2 pr-3 font-medium text-[#F5F7F5]">
                     {member.name}
                   </td>
-                  <td className="py-2 pr-3 text-(--muted)">{member.email}</td>
+                  <td className="py-2 pr-3 text-[#A7B3B3]">{member.email}</td>
                   <td className="py-2 pr-3">
                     <select
                       aria-label={`Role of ${member.name}`}
@@ -380,7 +380,7 @@ function MembersPanel({
                           event.target.value as OrganizationRole
                         )
                       }
-                      className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                      className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-xs text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                     >
                       {ROLE_OPTIONS.map((role) => (
                         <option key={role} value={role}>
@@ -394,7 +394,7 @@ function MembersPanel({
                       type="button"
                       onClick={() => void onRemoveMember(member.membershipId)}
                       disabled={busy}
-                      className="rounded-md border border-(--destructive)/40 px-3 py-2.5 min-h-[44px] text-xs font-semibold text-(--destructive) transition hover:bg-(--destructive) hover:text-white disabled:opacity-50"
+                      className="rounded-md border border-(--destructive)/40 px-3 py-2.5 min-h-[44px] text-xs font-semibold text-(--destructive) transition hover:bg-(--destructive) hover:text-[#F5F7F5] disabled:opacity-50"
                     >
                       {busy ? "Working…" : "Remove"}
                     </button>
@@ -405,7 +405,7 @@ function MembersPanel({
           </table>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-(--muted)" role="status">Loading members…</p>
+        <p className="mt-2 text-sm text-[#A7B3B3]" role="status">Loading members…</p>
       )}
 
       {status !== "error" && memberError && (
@@ -429,7 +429,7 @@ function MembersPanel({
           }
           placeholder="user@example.com"
           disabled={busy}
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-[#A7B3B3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label htmlFor="member-role" className="sr-only">
           Member role
@@ -444,7 +444,7 @@ function MembersPanel({
             }))
           }
           disabled={busy}
-          className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           {ROLE_OPTIONS.map((role) => (
             <option key={role} value={role}>
@@ -455,7 +455,7 @@ function MembersPanel({
         <button
           type="submit"
           disabled={busy || memberForm.email.trim() === ""}
-          className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-[#F5F7F5] transition hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "Working…" : "Add member"}
         </button>
@@ -796,17 +796,17 @@ function ProjectsPanel({
   return (
     <section
       id="projects"
-      className="rounded-xl border border-(--border) bg-(--card) p-4 md:p-6"
+      className="rounded-xl border border-(--border) bg-[#202D2E] p-4 md:p-6"
     >
       <SectionHeading>Projects — {org.name}</SectionHeading>
 
       {!canManageOrg && (
-        <p className="mt-2 text-sm text-(--muted)">
+        <p className="mt-2 text-sm text-[#A7B3B3]">
           Your role in this organization is{" "}
-          <span className="font-medium text-white">{org.role}</span>. You can
+          <span className="font-medium text-[#F5F7F5]">{org.role}</span>. You can
           view projects; creating, editing and changing status require the{" "}
-          <span className="font-medium text-white">ADMIN</span> or{" "}
-          <span className="font-medium text-white">OPERATOR</span> role.
+          <span className="font-medium text-[#F5F7F5]">ADMIN</span> or{" "}
+          <span className="font-medium text-[#F5F7F5]">OPERATOR</span> role.
         </p>
       )}
 
@@ -821,7 +821,7 @@ function ProjectsPanel({
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           placeholder="Search by name…"
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-[#A7B3B3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         />
         <label htmlFor="project-status-filter" className="sr-only">
           Filter projects by status
@@ -833,7 +833,7 @@ function ProjectsPanel({
             setStatusFilter(event.target.value as ProjectStatusFilter);
             setPage(0);
           }}
-          className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+          className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
         >
           <option value="all">All statuses</option>
           <option value="active">Active</option>
@@ -850,13 +850,13 @@ function ProjectsPanel({
           <button
             type="button"
             onClick={() => setReload((count) => count + 1)}
-            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+            className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5]"
           >
             Retry
           </button>
         </div>
       ) : status === "ready" && projects.length === 0 ? (
-        <p className="mt-3 text-sm text-(--muted)">
+        <p className="mt-3 text-sm text-[#A7B3B3]">
           {hasFilter
             ? "No projects match your search."
             : "No projects yet. Create a project to organize the services you want Sentinel to monitor."}
@@ -865,7 +865,7 @@ function ProjectsPanel({
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-(--border) text-left text-(--muted)">
+              <tr className="border-b border-(--border) text-left text-[#A7B3B3]">
                 <th className="py-2 pr-3 font-medium">Name</th>
                 <th className="py-2 pr-3 font-medium">Status</th>
                 <th className="py-2 pr-3 font-medium">Role</th>
@@ -880,21 +880,21 @@ function ProjectsPanel({
                 return (
                   <Fragment key={project.id}>
                     <tr className="border-b border-(--border)/30">
-                      <td className="py-2 pr-3 font-medium text-white">
+                      <td className="py-2 pr-3 font-medium text-[#F5F7F5]">
                         {project.name}
                       </td>
                       <td className="py-2 pr-3">
                         <span
                           className={
                             project.active
-                              ? "rounded bg-(--accent) px-1.5 py-0.5 text-xs font-semibold text-white"
-                              : "rounded border border-(--border) px-1.5 py-0.5 text-xs font-semibold text-(--muted)"
+                              ? "rounded bg-(--accent) px-1.5 py-0.5 text-xs font-semibold text-[#F5F7F5]"
+                              : "rounded border border-(--border) px-1.5 py-0.5 text-xs font-semibold text-[#A7B3B3]"
                           }
                         >
                           {project.active ? "active" : "inactive"}
                         </span>
                       </td>
-                      <td className="py-2 pr-3 text-(--muted)">
+                      <td className="py-2 pr-3 text-[#A7B3B3]">
                         {project.role}
                       </td>
                       <td className="py-2 text-right">
@@ -904,7 +904,7 @@ function ProjectsPanel({
                             onClick={() => onToggleDetails(project)}
                             aria-expanded={isExpanded}
                             disabled={busy}
-                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
                           >
                             {isExpanded ? "Close" : "Details"}
                           </button>
@@ -912,7 +912,7 @@ function ProjectsPanel({
                             type="button"
                             onClick={() => void onToggleStatus(project)}
                             disabled={!canManage || busy}
-                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                            className="rounded-md border border-(--border) px-3 py-2.5 min-h-[44px] text-xs text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
                           >
                             {togglingId === project.id
                               ? "Saving…"
@@ -928,11 +928,11 @@ function ProjectsPanel({
                     {isExpanded && (
                       <tr className="border-b border-(--border)/30">
                         <td colSpan={4} className="py-3 pr-3">
-                          <div className="flex flex-col gap-2 rounded-md border border-(--border) bg-(--surface) p-3">
-                            <p className="text-sm text-(--muted)">
+                          <div className="flex flex-col gap-2 rounded-md border border-(--border) bg-[#2D4143] p-3">
+                            <p className="text-sm text-[#A7B3B3]">
                               {project.description ?? "No description."}
                             </p>
-                            <p className="text-xs text-(--muted)">
+                            <p className="text-xs text-[#A7B3B3]">
                               Created {project.createdAt} · Updated{" "}
                               {project.updatedAt}
                             </p>
@@ -960,7 +960,7 @@ function ProjectsPanel({
                                     }))
                                   }
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <label
                                   htmlFor={`project-edit-description-${project.id}`}
@@ -979,7 +979,7 @@ function ProjectsPanel({
                                   }
                                   placeholder="Description (optional)"
                                   disabled={busy}
-                                  className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+                                  className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-[#A7B3B3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
                                 />
                                 <div className="flex flex-wrap items-center gap-2">
                                   <button
@@ -987,7 +987,7 @@ function ProjectsPanel({
                                     disabled={
                                       busy || editForm.name.trim() === ""
                                     }
-                                    className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                                    className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-[#F5F7F5] transition hover:opacity-90 disabled:opacity-50"
                                   >
                                     {saving ? "Saving…" : "Save changes"}
                                   </button>
@@ -998,7 +998,7 @@ function ProjectsPanel({
                                       setEditError(null);
                                     }}
                                     disabled={busy}
-                                    className="rounded-md border border-(--border) px-4 py-3 min-h-[44px] text-sm text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                                    className="rounded-md border border-(--border) px-4 py-3 min-h-[44px] text-sm text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
                                   >
                                     Close
                                   </button>
@@ -1010,7 +1010,7 @@ function ProjectsPanel({
                                 </div>
                               </form>
                             ) : (
-                              <p className="text-xs text-(--muted)">
+                              <p className="text-xs text-[#A7B3B3]">
                                 Read-only — your role cannot edit projects.
                               </p>
                             )}
@@ -1040,7 +1040,7 @@ function ProjectsPanel({
 
           {/* Paginação simples: anterior/próxima + total */}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span className="text-(--muted)">
+            <span className="text-[#A7B3B3]">
               {totalElements}{" "}
               {totalElements === 1 ? "project" : "projects"} · Page{" "}
               {Math.min(page + 1, Math.max(totalPages, 1))} of{" "}
@@ -1051,7 +1051,7 @@ function ProjectsPanel({
                 type="button"
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
                 disabled={page === 0 || busy}
-                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
               >
                 Previous
               </button>
@@ -1059,7 +1059,7 @@ function ProjectsPanel({
                 type="button"
                 onClick={() => setPage((current) => current + 1)}
                 disabled={page + 1 >= totalPages || busy}
-                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white disabled:opacity-50"
+                className="rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5] disabled:opacity-50"
               >
                 Next
               </button>
@@ -1067,7 +1067,7 @@ function ProjectsPanel({
           </div>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-(--muted)" role="status">Loading projects…</p>
+        <p className="mt-3 text-sm text-[#A7B3B3]" role="status">Loading projects…</p>
       )}
 
       {/* Feedback de sucesso/falha de ações sobre a lista */}
@@ -1104,12 +1104,12 @@ function ProjectsPanel({
               }
               placeholder="New project name"
               disabled={busy}
-              className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-[#A7B3B3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={busy || createForm.name.trim() === ""}
-              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-[#F5F7F5] transition hover:opacity-90 disabled:opacity-50"
             >
               {creating ? "Creating…" : "Create project"}
             </button>
@@ -1128,7 +1128,7 @@ function ProjectsPanel({
             }
             placeholder="Description (optional)"
             disabled={busy}
-            className="rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+            className="rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-[#A7B3B3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           />
           {createError && (
             <p className="text-sm text-(--destructive)">{createError}</p>
@@ -1269,21 +1269,21 @@ function OrganizationSection({
   return (
     <div className="flex w-full flex-col gap-6">
       {/* Organizações: lista + indicação da org ativa + criação */}
-      <section className="rounded-xl border border-(--border) bg-(--card) p-4 md:p-6">
+      <section className="rounded-xl border border-(--border) bg-[#202D2E] p-4 md:p-6">
         <SectionHeading>Organizations</SectionHeading>
 
         {/* Indicador da organização ativa */}
         {activeOrg ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-(--accent)/30 bg-(--accent)/10 px-3 py-2 text-sm">
-            <span className="text-(--muted)">Active organization</span>
-            <span className="font-semibold text-white">{activeOrg.name}</span>
-            <span className="rounded bg-(--accent) px-1.5 py-0.5 text-xs font-semibold text-white">
+            <span className="text-[#A7B3B3]">Active organization</span>
+            <span className="font-semibold text-[#F5F7F5]">{activeOrg.name}</span>
+            <span className="rounded bg-(--accent) px-1.5 py-0.5 text-xs font-semibold text-[#F5F7F5]">
               {activeOrg.role}
             </span>
           </div>
         ) : (
           orgsStatus === "ready" && (
-            <p className="mt-3 text-sm text-(--muted)">
+            <p className="mt-3 text-sm text-[#A7B3B3]">
               No organization selected.
             </p>
           )
@@ -1292,7 +1292,7 @@ function OrganizationSection({
         {/* Lista / loading / vazio / erro de rede */}
         <div className="mt-3">
           {orgsStatus === "loading" ? (
-            <p className="text-sm text-(--muted)" role="status">Loading organizations…</p>
+            <p className="text-sm text-[#A7B3B3]" role="status">Loading organizations…</p>
           ) : orgsStatus === "error" ? (
             <div className="rounded-md border border-(--destructive)/40 bg-(--destructive)/10 p-3 text-sm">
               <p className="text-(--destructive)">
@@ -1301,13 +1301,13 @@ function OrganizationSection({
               <button
                 type="button"
                 onClick={() => setReload((count) => count + 1)}
-                className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-(--muted) transition hover:border-(--border-hover) hover:text-white"
+                className="mt-2 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5]"
               >
                 Retry
               </button>
             </div>
           ) : orgs.length === 0 ? (
-            <p className="text-sm text-(--muted)">
+            <p className="text-sm text-[#A7B3B3]">
               No organizations yet — create your first one below.
             </p>
           ) : (
@@ -1322,21 +1322,21 @@ function OrganizationSection({
                       aria-pressed={isActive}
                       className={`flex w-full items-center justify-between gap-3 rounded-md border px-4 py-3 min-h-[44px] text-left text-sm transition ${
                         isActive
-                          ? "border-(--accent) bg-(--accent)/10 text-white"
-                          : "border-(--border) text-(--muted) hover:border-(--border-hover) hover:text-white"
+                          ? "border-(--accent) bg-(--accent)/10 text-[#F5F7F5]"
+                          : "border-(--border) text-[#A7B3B3] hover:border-(--border-hover) hover:text-[#F5F7F5]"
                       }`}
                     >
                       <span className="font-medium">{org.name}</span>
                       <span className="flex items-center gap-2 text-xs">
                         <span
                           className={
-                            isActive ? "text-(--accent)" : "text-(--muted)"
+                            isActive ? "text-(--accent)" : "text-[#A7B3B3]"
                           }
                         >
                           {org.role}
                         </span>
                         {isActive && (
-                          <span className="rounded bg-(--accent) px-1.5 py-0.5 font-semibold text-white">
+                          <span className="rounded bg-(--accent) px-1.5 py-0.5 font-semibold text-[#F5F7F5]">
                             active
                           </span>
                         )}
@@ -1364,12 +1364,12 @@ function OrganizationSection({
             placeholder="New organization name"
             maxLength={128}
             disabled={creatingOrg}
-            className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 py-3 min-h-[44px] text-sm text-white placeholder:text-(--muted) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
+            className="min-w-0 flex-1 rounded-md border border-(--border) bg-[#2D4143] px-3 py-3 min-h-[44px] text-sm text-[#F5F7F5] placeholder:text-[#A7B3B3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={creatingOrg || orgName.trim().length === 0}
-            className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            className="rounded-md bg-(--accent) px-4 py-3 min-h-[44px] text-sm font-semibold text-[#F5F7F5] transition hover:opacity-90 disabled:opacity-50"
           >
             {creatingOrg ? "Creating…" : "Create"}
           </button>
@@ -1389,10 +1389,10 @@ function OrganizationSection({
       ) : (
         <section
           id="members"
-          className="rounded-xl border border-(--border) bg-(--card) p-4 md:p-6"
+          className="rounded-xl border border-(--border) bg-[#202D2E] p-4 md:p-6"
         >
           <SectionHeading tone="purple">Members</SectionHeading>
-          <p className="mt-2 text-sm text-(--muted)">
+          <p className="mt-2 text-sm text-[#A7B3B3]">
             Select an organization to see its members.
           </p>
         </section>
@@ -1500,11 +1500,11 @@ function UserAccount({ user }: { user: UserResponse | null }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex min-h-[44px] items-center gap-2 rounded-xl bg-[#0a0a0a]/80 border border-white/[0.08] px-3 py-2 text-sm font-medium text-white hover:border-[#F97316]/30 hover:bg-[#F97316]/10 transition-colors backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.4)] focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
+        className="flex min-h-[44px] items-center gap-2 rounded-xl bg-[#0a0a0a]/80 border border-white/[0.08] px-3 py-2 text-sm font-medium text-[#F5F7F5] hover:border-[#B0F35C]/40 hover:bg-[#B0F35C]/15 transition-colors backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.4)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
         aria-label="Minha conta"
         aria-expanded={open}
       >
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#F97316] to-[#9333EA] text-[10px] font-bold text-white shadow-[0_0_10px_rgba(249,115,22,0.3)]">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#B0F35C] to-[#6ee07a] text-[10px] font-bold text-[#F5F7F5] shadow-[0_0_10px_rgba(176,243,92,0.3)]">
           {user.name?.[0]?.toUpperCase() || "U"}
         </span>
         <span className="hidden md:inline">Minha conta</span>
@@ -1516,15 +1516,15 @@ function UserAccount({ user }: { user: UserResponse | null }) {
             opensUp ? "bottom-full mb-2" : "top-full mt-2"
           }`}
         >
-          <div className="text-xs text-[#cbd5e1]/50 uppercase tracking-wider font-bold mb-2">Usuário</div>
-          <div className="text-sm font-semibold text-white">{user.name}</div>
-          <div className="text-xs text-[#cbd5e1]/60 break-all">{user.email}</div>
+          <div className="text-xs text-[#A7B3B3]/50 uppercase tracking-wider font-bold mb-2">Usuário</div>
+          <div className="text-sm font-semibold text-[#F5F7F5]">{user.name}</div>
+          <div className="text-xs text-[#A7B3B3]/60 break-all">{user.email}</div>
           <div className="mt-3 border-t border-white/[0.06] pt-2">
             <button
               type="button"
               onClick={() => void onSignOut()}
               disabled={signingOut}
-              className="w-full min-h-[44px] rounded-lg px-2 py-1.5 text-left text-xs font-medium text-[#f87171] transition-colors hover:bg-[#f87171]/10 hover:text-[#f87171]/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) disabled:opacity-60"
+              className="w-full min-h-[44px] rounded-lg px-2 py-1.5 text-left text-xs font-medium text-[#f87171] transition-colors hover:bg-[#f87171]/10 hover:text-[#f87171]/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] disabled:opacity-60"
             >
               {signingOut ? "Signing out…" : "Sign Out"}
             </button>
@@ -1685,7 +1685,7 @@ function SectionNav({
       className="relative z-10 -mt-6 w-full md:-mt-8"
     >
       <div className="mx-auto w-full max-w-[1100px] px-4 md:px-6">
-        <ul className="mx-auto flex w-fit max-w-full items-stretch justify-start gap-1 overflow-x-auto rounded-full border border-white/10 bg-black/70 px-2 py-1.5 backdrop-blur-md sm:justify-center sm:gap-2">
+        <ul className="mx-auto flex w-fit max-w-full items-stretch justify-start gap-1 overflow-x-auto rounded-full border border-white/10 bg-[#192526]/70 px-2 py-1.5 backdrop-blur-md sm:justify-center sm:gap-2">
           {NAV_ITEMS.map(({ id, label, Icon }) => {
             const isActive = active === id;
             return (
@@ -1694,10 +1694,10 @@ function SectionNav({
                   href={`#${id}`}
                   aria-current={isActive ? "true" : undefined}
                   onClick={() => onSelect(id)}
-                  className={`relative flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 rounded-full px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
+                  className={`relative flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 rounded-full px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-[#192526] ${
                     isActive
                       ? "text-(--accent)"
-                      : "text-(--muted) hover:text-white"
+                      : "text-[#A7B3B3] hover:text-[#F5F7F5]"
                   }`}
                 >
                   <Icon className="h-5 w-5" />
@@ -1884,27 +1884,27 @@ function StatsCards({ stats }: { stats: HomeStats }) {
             key={key}
             className={`rounded-xl border p-4 ${
               tone === "accent"
-                ? "border-(--accent)/40 bg-[#F97316]/10"
-                : "border-(--purple)/40 bg-[#9333EA]/10"
+                ? "border-[#B0F35C]/40 bg-[#2D4143]/50"
+                : "border-[#B0F35C]/30 bg-[#2D4143]/40"
             }`}
           >
             <div className="flex items-center gap-3">
               <span
                 className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
                   tone === "accent"
-                    ? "bg-[#F97316]/15 text-(--accent)"
-                    : "bg-[#9333EA]/15 text-(--purple-soft)"
+                    ? "bg-[#B0F35C]/15 text-[#B0F35C]"
+                    : "bg-[#B0F35C]/15 text-[#B0F35C]"
                 }`}
               >
                 <Icon className="h-5 w-5" />
               </span>
-              <span className="text-xs font-semibold uppercase tracking-wide text-(--muted)">
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#A7B3B3]">
                 {label}
               </span>
             </div>
-            <p className="mt-3 text-2xl font-bold text-white">{value}</p>
+            <p className="mt-3 text-2xl font-bold text-[#F5F7F5]">{value}</p>
             {hint && (
-              <p className="mt-1 text-xs text-(--muted)">{hint}</p>
+              <p className="mt-1 text-xs text-[#A7B3B3]">{hint}</p>
             )}
           </article>
         ))}
@@ -2013,31 +2013,25 @@ export default function Home() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-[#050505] via-[#090909] to-[#050505] text-white">
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-[#152829] via-[#192526] to-[#152829] text-[#F5F7F5]">
       {/* Banner oficial no topo — SEM `overflow-hidden`: o dropdown do
           `UserAccount` é absoluto e sai do header em telas baixas (375px:
           banner ~125px, dropdown ~157px); recortá-lo esconderia nome, e-mail
           e `Sign Out`. O `<Image>` é bloco com `object-cover` — não vaza. */}
-      <header className="relative w-full">
-        <Image
-          src="/dashboard-banner.png"
-          alt="Sentinel Dashboard Banner"
-          width={1920}
-          height={640}
-          className="w-full h-auto max-h-[200px] md:max-h-[220px] object-cover opacity-90"
-        />
+      <header className="relative w-full min-h-[120px] sm:min-h-[220px] md:min-h-[300px] bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url("/sentinel-header-v2.png")', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+
         {/* Overlay sutil para contraste — ANTES do logo e da conta, para não
             escurecê-los (a referência `public/menu-central.png` mostra o
             logo limpo; posicionados empatados vencem quem vem depois). */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#050505]/60 via-transparent to-[#050505]/40 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#152829]/60 via-transparent to-[#152829]/40 pointer-events-none" />
         {/* Logo oficial no canto superior esquerdo do banner */}
         <div className="absolute top-4 left-4 md:top-6 md:left-6 z-10">
           <Image
-            src="/logo-login.png"
-            alt="Sentinel - Monitoramento Inteligente"
+            src="/logo-painel-principal.png"
+            alt="Sentinel - Monitoramento e Observabilidade"
             width={520}
             height={200}
-            className="w-28 h-auto md:w-36 drop-shadow-[0_0_25px_rgba(249,115,22,0.45)]"
+            className="w-28 h-auto md:w-[23.72rem] drop-shadow-[0_0_25px_rgba(176,243,92,0.35)]"
           />
         </div>
         {/* Perfil único — Minha conta (`z-20` acima do overlay e da nav) */}
@@ -2069,17 +2063,17 @@ export default function Home() {
               <p className="text-sm font-semibold text-(--destructive)">
                 Session check failed
               </p>
-              <p className="mt-1 text-sm text-(--muted)">
+              <p className="mt-1 text-sm text-[#A7B3B3]">
                 {sessionError ?? "Could not verify your session"}
               </p>
-              <p className="mt-1 text-sm text-(--muted)">
+              <p className="mt-1 text-sm text-[#A7B3B3]">
                 Sentinel could not reach the authentication service. Your data
                 is untouched — try again in a moment.
               </p>
               <button
                 type="button"
                 onClick={() => setSessionAttempt((count) => count + 1)}
-                className="mt-3 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-sm font-medium text-(--muted) transition hover:border-(--border-hover) hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
+                className="mt-3 rounded-md border border-(--border) px-4 py-2.5 min-h-[44px] text-sm font-medium text-[#A7B3B3] transition hover:border-(--border-hover) hover:text-[#F5F7F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B0F35C] focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
               >
                 Try again
               </button>
@@ -2088,7 +2082,7 @@ export default function Home() {
 
           {/* Rebootstrap em andamento (só após uma nova tentativa) */}
           {sessionKind === "loading" && sessionAttempt > 0 && (
-            <p className="mt-4 text-sm text-(--muted)" role="status">
+            <p className="mt-4 text-sm text-[#A7B3B3]" role="status">
               Checking your session…
             </p>
           )}
@@ -2099,7 +2093,7 @@ export default function Home() {
               <StatsCards stats={stats} />
 
               {/* Painel único de conteúdo — Multi-tenancy (orgs/membros/projetos) */}
-              <div className="mt-6 rounded-2xl border border-(--accent)/20 bg-[#0b0b0b] p-4 md:p-6">
+              <div className="mt-6 rounded-2xl border border-(--accent)/20 bg-[#202D2E] p-4 md:p-6">
                 <OrganizationSection onStatsChange={handleStatsChange} />
               </div>
             </>
