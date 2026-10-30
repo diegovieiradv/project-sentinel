@@ -1,0 +1,14 @@
+# Ignorar arquivos de desenvolvimento e build local
+.target/
+*.md
+*.md.bak
+.git
+.gitignore
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.log
