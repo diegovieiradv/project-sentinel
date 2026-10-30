@@ -25,7 +25,7 @@ Testes E2E em navegador (Playwright, requer servidores de pé): `npm run test:e2
 
 | Variável              | Default                 | Descrição                       |
 | --------------------- | ----------------------- | ------------------------------- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Base URL da API do backend       |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Destino do proxy `/api/*` (não base URL do cliente). O frontend proxifica `/api/*` para esta origem, preservando cookies same-origin. Em dev aponta para localhost:8080; em prod deve ser o Render. O cliente nunca deve montar URLs absolutas — usar o proxy `/api/*` para que cookies (SameSite=Strict/HttpOnly/Path) sejam enviados automaticamente pelo navegador. |
 
 Copie `.env.example` para `.env.local` para sobrescrever. Portas: frontend `3000`,
 backend `8080`, PostgreSQL `5433` (docker-compose na raiz do repositório).

@@ -18,8 +18,7 @@
  * como `ApiError` (status + code + message legível).
  */
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export const API_URL = "";
 
 /** Contrato de saída de usuário — backend nunca envia password/hash. */
 export interface UserResponse {
